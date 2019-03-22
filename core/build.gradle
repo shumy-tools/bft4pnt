@@ -1,0 +1,54 @@
+plugins {
+  id 'java'
+  id 'maven'
+  id 'org.xtext.xtend' version '2.0.2'
+}
+
+group 'pt.ieeta'
+version '0.1.0'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+defaultTasks 'jar'
+
+repositories {
+  mavenLocal()
+  mavenCentral()
+}
+
+sourceSets {
+  main.java.srcDirs= ['src/main']
+  test.java.srcDirs= ['src/test']
+}
+
+dependencies {
+  compile 'ch.qos.logback:logback-classic:1.2.3'
+  compile 'org.eclipse.xtend:org.eclipse.xtend.lib:2.15.0'
+  
+  compile 'org.bouncycastle:bcprov-jdk15on:1.61'
+  compile 'io.netty:netty-buffer:4.1.34.Final'
+}
+
+jar {
+  manifest {
+    attributes 'Implementation-Title': project.name,
+      'Implementation-Version': version, 
+      'Built-By': 'micaelpedrosa@gmail.com',
+      'Main-Class': 'MainTest',
+      'Class-Path': configurations.runtime.resolvedConfiguration.resolvedArtifacts.collect {
+        def gid = it.id.componentIdentifier.group
+        "deps/$gid/" + it.file.name
+      }.join(' ')
+  }
+}
+
+task deps(type: Copy) {
+  configurations.runtime.resolvedConfiguration.resolvedArtifacts.each { dep ->
+    def gid = dep.id.componentIdentifier.group
+    copy {
+      from dep.file
+      into "$buildDir/libs/deps/$gid"
+    }
+  }
+}
