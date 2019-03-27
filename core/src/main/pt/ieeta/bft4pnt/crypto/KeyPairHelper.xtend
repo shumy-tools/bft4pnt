@@ -26,6 +26,11 @@ class KeyPairHelper {
     return kp
   }
   
+  def static PublicKey read(byte[] key) {
+    val spki = SubjectPublicKeyInfo.getInstance(key)
+    return pubConst.newInstance(spki)
+  }
+  
   def static PublicKey decodePublicKey(String key) {
     val data = Base64.decode(key.getBytes(StandardCharsets.UTF_8))
     val spki = SubjectPublicKeyInfo.getInstance(data)
@@ -36,6 +41,10 @@ class KeyPairHelper {
     val data = Base64.decode(key.getBytes(StandardCharsets.UTF_8))
     val pki = PrivateKeyInfo.getInstance(data)
     return prvConst.newInstance(pki)
+  }
+  
+  def static byte[] write(PublicKey key) {
+    return key.encoded
   }
   
   def static String encode(PublicKey key) {

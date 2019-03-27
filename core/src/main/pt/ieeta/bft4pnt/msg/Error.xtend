@@ -10,6 +10,27 @@ class Error implements ISection {
   public val Code code
   public val String msg
   
+  static def Error internal(String msg) {
+    return new Error(Code.INTERNAL, msg)
+  }
+  
+  static def Error unauthorized(String msg) {
+    return new Error(Code.UNAUTHORIZED, msg)
+  }
+
+  static def Error invalid(String msg) {
+    return new Error(Code.INVALID, msg)
+  }
+  
+  static def Error constraint(String msg) {
+    return new Error(Code.CONSTRAINT, msg)
+  }
+  
+  def toMessage() {
+    val record = new Record("no-u", "no-f")
+    return new Message(record, this)
+  }
+  
   override write(ByteBuf buf) {
     buf.writeShort(code.ordinal)
     Message.writeString(buf, msg)
