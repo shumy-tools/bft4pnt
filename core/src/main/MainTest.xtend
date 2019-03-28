@@ -29,5 +29,6 @@ class MainTest {
     ]
     
     broker.send(msg)
+    
   }
 }
