@@ -14,15 +14,36 @@ import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.store.IClientStore
 import pt.ieeta.bft4pnt.store.IDataStore
 import pt.ieeta.bft4pnt.store.IStore
+import java.util.HashMap
+import pt.ieeta.bft4pnt.msg.Record
+import org.slf4j.LoggerFactory
 
 @FinalFieldsConstructor
 class PNTServer {
+  static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
+  
   val MessageBroker broker
   val IStore store
   
+  // the values do not require persistence.
+  val counts = new HashMap<String, Integer>
+  
+  private def int count(String source, Record record, Update update) {
+    val key = '''«source»-«record.udi»-«record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
+    val value = counts.get(key) ?: 0
+    counts.put(key, value + 1)
+    return value + 1
+  }
+  
+  private def void clear(String source, Record record, Update update) {
+    val key = '''«source»-«record.udi»-«record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
+    counts.remove(key)
+  }
+  
   def void start() {
     broker.start[ msg |
-      if (!store.has(msg.record.udi)) {
+      val cs = store.get(msg.record.udi)
+      if (cs === null) {
         val reply = new Message(msg.record, Error.unauthorized("Non existent UDI!")) => [
           id = msg.id
           address = msg.address
@@ -32,13 +53,11 @@ class PNTServer {
         return;
       }
       
-      //TODO: verify source authorization (client or party)
-      msg.source = msg.address.toString //TODO: change to (UDI or PublicKey) for (clients or parties)
-      
-      //TODO: Parties should always verify the correctness of fingerprints after receiving the data block.
-      
-      val cs = store.get(msg.record.udi)
       synchronized(cs) {
+        //TODO: verify source authorization (client or party)
+        
+        //TODO: Parties should always verify the correctness of fingerprints after receiving the data block.
+        
         handle(cs, msg, msg.body)[ reply |
           reply => [
             id = msg.id
@@ -66,7 +85,7 @@ class PNTServer {
     }
     
     //Commits can have concurrent proposals of higher rounds for the same value.
-    val update = record.getUpdate(body.index)
+    val update = record.getCommit(body.index)
     if (update !== null) {
       val updateBody = update.body as Update
       if (updateBody.propose.fingerprint != body.fingerprint || updateBody.propose.round >= body.round) {
@@ -128,34 +147,12 @@ class PNTServer {
     }
     
     // Conflicting commits can only be overridden by other commits of higher rounds.
-    val update = record.getUpdate(body.propose.index)
+    val update = record.getCommit(body.propose.index)
     if (update !== null) {
       val updateBody = update.body as Update
       if (updateBody.propose.fingerprint != body.propose.fingerprint && updateBody.propose.round >= body.propose.round) {
         reply.apply(update)
         return;
-      }
-    }
-    
-    // Proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
-    val current = record.vote
-    if (current !== null) {
-      val currentBody = current.body as Reply
-      
-      //has (n - t) commits to override?
-      val counts = record.count(msg.source, body.propose.fingerprint)
-      if (counts < nMt) {
-        // Cannot directly accept a commit for a different proposal. 
-        if (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) {
-          reply.apply(current)
-          return;
-        }
-        
-        // Proposals can be overridden by commits of the same or higher rounds
-        if (currentBody.propose.round > body.propose.round) {
-          reply.apply(current)
-          return;
-        }
       }
     }
     
@@ -180,6 +177,28 @@ class PNTServer {
       return;
     }
     
+    // Proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
+    val current = record.vote
+    if (current !== null) {
+      val currentBody = current.body as Reply
+      
+      // Cannot directly accept a commit for a different proposal.
+      // Proposals can only be overridden by commits of the same or higher rounds
+      if (
+        currentBody.propose.index != body.propose.index
+        || currentBody.propose.fingerprint != body.propose.fingerprint
+        || currentBody.propose.round > body.propose.round
+      ) {
+        //has (n - t) commits to override?
+        val counts = count(msg.source, msg.record, body)
+        if (counts < nMt) {
+          //TODO: the replication mechanism should have their own messages. The source of these cannot be properly identified!
+          reply.apply(current)
+          return;
+        }
+      }
+    }
+    
     // verify slices
     if (cs.data.verify(msg.record.fingerprint, body.propose.fingerprint, body.slices)) {
       reply.apply(new Message(msg.record, Error.invalid("Invalid slices!")))
@@ -187,7 +206,7 @@ class PNTServer {
     }
     
     // Accepted
-    record.clear(msg.source, body.propose.fingerprint)
+    clear(msg.source, msg.record, body)
     record.update(msg)
     reply.apply(new Message(msg.record, Reply.ack))
   }

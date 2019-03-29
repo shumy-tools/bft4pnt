@@ -8,6 +8,7 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
+import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
 class Message implements ISection {
   //WARNING: don't change the position of defined types.
@@ -15,8 +16,9 @@ class Message implements ISection {
     INSERT, UPDATE, PROPOSE, VOTE, GET, ERROR
   }
   
-  public var long id = 0
   public var InetSocketAddress address = null
+  
+  public var long id = 0
   public var String source = null
   byte[] signature = null
   
@@ -110,6 +112,7 @@ class Message implements ISection {
       
       val msg = new Message(version, type, record, body)
       msg.id = id
+      msg.source = KeyPairHelper.encode(pubKey)
       msg.signature = signature
       
       return new ReadResult(msg)
@@ -173,5 +176,18 @@ class Message implements ISection {
     val sBuf = newByteArrayOfSize(size)
     buf.readBytes(sBuf)
     return sBuf
+  }
+  
+  override toString() '''(id=«id», type=«type», udi=«record.udi», rec=«record.fingerprint»«printType»)'''
+  
+  private def printType() {
+    switch body {
+      Insert:   ''', type=«body.type»'''
+      Update:   ''', (n,t)=(«body.quorum.n»,«body.quorum.t») index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size»'''
+      Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
+      Reply:    ''', type=«body.type»«IF body.quorum !== null», (n,t)=(«body.quorum.n»,«body.quorum.t»)«ENDIF»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
+      Get:      ''', index=«body.index», slices=«body.slices»'''
+      Error:    ''', code=«body.code», error=«body.msg»'''
+    }
   }
 }

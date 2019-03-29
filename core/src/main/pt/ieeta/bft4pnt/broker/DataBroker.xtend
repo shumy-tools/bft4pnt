@@ -35,7 +35,7 @@ class BrokerInitializer extends ChannelInitializer<NioDatagramChannel> {
 }
 
 class DataBroker {
-  static val logger = LoggerFactory.getLogger(DataBroker)
+  static val logger = LoggerFactory.getLogger(DataBroker.simpleName)
   
   val InetSocketAddress address
   var Channel channel = null
@@ -44,7 +44,9 @@ class DataBroker {
     this.address = address
   }
   
-  def void start((InetSocketAddress, ByteBuf)=>void handler) {
+  def isReady() { channel !== null }
+  
+  def void start((InetSocketAddress)=>void whenReady, (InetSocketAddress, ByteBuf)=>void handler) {
     new Thread[
       Thread.currentThread.name = "MessageBroker-Thread"
       
@@ -57,10 +59,11 @@ class DataBroker {
         ]
         
         channel = b.bind(address).sync.channel
-        logger.info('BFT-PNT broker available at {}', address.port)
+        logger.debug('BFT-PNT broker available at {}', address.port)
+        whenReady.apply(address)
         
         channel.closeFuture.await
-        logger.info('BFT-PNT broker stopped')
+        logger.debug('BFT-PNT broker stopped')
       } catch(Throwable ex) {
         ex.printStackTrace
       } finally {
