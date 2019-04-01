@@ -4,6 +4,7 @@ import java.net.InetSocketAddress
 import java.security.KeyPair
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
 
 class MessageBroker {
@@ -24,19 +25,25 @@ class MessageBroker {
     db.start([
       logger.info("MSG-BROKER-READY {} on {}", udi, '''«hostString»:«port»''')
     ], [inetSource, data |
-      val result = Message.read(data)
-      if (result.hasError) {
-        logger.info("MSG-ERROR: {}", result.error.msg)
+      try {
+        val result = Message.read(data)
+        if (result.hasError) {
+          logger.error("MSG-ERROR: {}", result.error.msg)
+          val error = result.error.toMessage.write(keys)
+          db.send(inetSource, error)
+          return;
+        }
         
-        val error = result.error.toMessage.write(keys)
-        db.send(inetSource, error)
+        result.msg.address = inetSource
+        logger.info("MSG-RECEIVED: {} from {}", result.msg, '''«result.msg.address.hostString»:«result.msg.address.port»''')
+        handler.apply(result.msg)
+      } catch(Throwable ex) {
+        logger.error("MSG-ERROR: {}", ex.message)
+        ex.printStackTrace
         
-        return;
+        val error = Error.internal(ex.message)
+        db.send(inetSource, error.toMessage.write(keys))
       }
-      
-      result.msg.address = inetSource
-      logger.info("MSG-RECEIVED: {} from {}", result.msg, '''«result.msg.address.hostString»:«result.msg.address.port»''')
-      handler.apply(result.msg)
     ])
   }
   

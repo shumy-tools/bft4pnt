@@ -1,8 +1,9 @@
-package pt.ieeta.bft4pnt.store
+package pt.ieeta.bft4pnt.spi
 
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.QuorumConfig
 import pt.ieeta.bft4pnt.msg.Slices
+import pt.ieeta.bft4pnt.crypto.ArraySlice
 
 interface IStore {
   def QuorumConfig getQuorum()
@@ -20,6 +21,8 @@ interface IClientStore {
 }
 
 interface IRecord {
+  def String getType()
+  
   def Message getVote()
   def void setVote(Message vote)
   
@@ -37,4 +40,7 @@ interface IDataStore {
   // use record == dk for inserts
   def Status has(String record, String dk)
   def boolean verify(String record, String dk, Slices slices)
+  
+  def void store(String record, String dk, byte[] data)
+  def void store(String record, String dk, ArraySlice slice)
 }

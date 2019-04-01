@@ -10,7 +10,6 @@ import java.security.PublicKey
 import java.util.HashMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.ArraySlice
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
 @FinalFieldsConstructor
@@ -35,7 +34,7 @@ class Replica implements ISection {
 class Message {
   //WARNING: don't change the position of defined types.
   enum Type {
-    INSERT, UPDATE, PROPOSE, VOTE, GET, ERROR
+    INSERT, UPDATE, PROPOSE, REPLY, GET, ERROR
   }
   
   public var InetSocketAddress address = null
@@ -47,12 +46,14 @@ class Message {
   public val Record record
   public val ISection body
   
-  var PublicKey source
-  var byte[] signature
-  
+  var Signature signature
   val replicas = new HashMap<Integer, Replica>
   val rParties = new HashMap<Integer, PrivateKey>
   
+  // optional data
+  public var byte[] data = null
+  
+  def getSource() { signature.source }
   def getReplicaParties() { replicas.keySet }
   
   def verifyReplicas((Integer)=>PublicKey resolver) {
@@ -72,8 +73,11 @@ class Message {
       Insert: Type.INSERT
       Update: Type.UPDATE
       Propose: Type.PROPOSE
+      Reply: Type.REPLY
+      
       Get: Type.GET
       Error: Type.ERROR
+      default: throw new RuntimeException("Unrecognized body type: " + body.class)
     }
     
     this.record = record
@@ -106,12 +110,8 @@ class Message {
       this.write(it)
       val block = signedBlock
       
-      //sign the message
-      this.source = keys.public
-      writeBytes(it, source.encoded)
-      
-      this.signature = SignatureHelper.sign(keys.private, block)
-      writeBytes(it, signature)
+      signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
+      signature.write(it)
       
       if (type === Type.UPDATE) {
         writeInt(replicas.size)
@@ -122,6 +122,8 @@ class Message {
           replica.write(it)
         }
       }
+      
+      writeBytes(it, data)
     ]
   }
   
@@ -150,9 +152,9 @@ class Message {
         case INSERT: Insert.read(buf)
         case UPDATE: Update.read(buf)
         case PROPOSE: Propose.read(buf)
-        case VOTE: Reply.read(buf)
-        case GET: Get.read(buf)
+        case REPLY: Reply.read(buf)
         
+        case GET: Get.read(buf)
         case ERROR: Error.read(buf)
         default: return new ReadResult("Unrecognized message type!")
       }
@@ -160,11 +162,8 @@ class Message {
       // block signature ends here. Count the remaining bytes to remove.
       var less = 0
       
-      val key = readBytes(buf)
-      less += 4 + key.length
-      
-      val signature = readBytes(buf)
-      less += 4 + signature.length
+      val signature = Signature.read(buf)
+      less += 8 + signature.source.encoded.length + signature.signature.length
       
       val replicas = new HashMap<Integer, Replica>
       if (type === Type.UPDATE) {
@@ -177,16 +176,20 @@ class Message {
         }
       }
       
+      val data = readBytes(buf)
+      if (data !== null)
+        less += data.length
+      less += 4
+      
       // Verify the correctness of the source digital signature
-      val source = KeyPairHelper.read(key)
-      if (!SignatureHelper.verify(source, block.remove(less), signature))
+      if (!signature.verify(block.remove(less)))
         return new ReadResult("Incorrect signature!")
       
       val msg = new Message(version, type, record, body)
       msg.id = id
-      msg.source = source
       msg.signature = signature
       msg.replicas.putAll(replicas)
+      msg.data = data
       
       return new ReadResult(msg)
     } catch (Throwable ex) {
