@@ -1,8 +1,7 @@
 package pt.ieeta.bft4pnt.broker
 
 import java.net.InetSocketAddress
-import java.security.PrivateKey
-import java.security.PublicKey
+import java.security.KeyPair
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.msg.Message
@@ -13,43 +12,36 @@ class MessageBroker {
   val DataBroker db
   
   val String udi
-  val PrivateKey prvKey
+  val KeyPair keys
   
-  val (InetSocketAddress)=>PublicKey addressResolver
-  
-  new(InetSocketAddress address, PrivateKey prvKey, (InetSocketAddress)=>PublicKey addressResolver) {
+  new(InetSocketAddress address, KeyPair keys) {
     this.db = new DataBroker(address)
-    this.prvKey = prvKey
-    
-    val pubKey = addressResolver.apply(address)
-    this.udi = KeyPairHelper.encode(pubKey)
-    
-    this.addressResolver = addressResolver
+    this.keys = keys
+    this.udi = KeyPairHelper.encode(keys.public)
   }
   
   def void start((Message)=>void handler) {
     db.start([
       logger.info("MSG-BROKER-READY {} on {}", udi, '''«hostString»:«port»''')
     ], [inetSource, data |
-      val source = addressResolver.apply(inetSource)
-      val result = Message.read(data, source)
+      val result = Message.read(data)
       if (result.hasError) {
         logger.info("MSG-ERROR: {}", result.error.msg)
         
-        val error = result.error.toMessage.write(prvKey)
+        val error = result.error.toMessage.write(keys)
         db.send(inetSource, error)
         
         return;
       }
       
       result.msg.address = inetSource
-      logger.info("MSG-RECEIVED: {} from {}", result.msg, result.msg.source)
+      logger.info("MSG-RECEIVED: {} from {}", result.msg, '''«result.msg.address.hostString»:«result.msg.address.port»''')
       handler.apply(result.msg)
     ])
   }
   
   def void send(Message msg) {
-    val data = msg.write(prvKey)
+    val data = msg.write(keys)
     
     while (!db.ready)
       Thread.sleep(100)

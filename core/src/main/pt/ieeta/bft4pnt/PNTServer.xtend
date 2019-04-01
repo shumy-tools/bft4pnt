@@ -1,7 +1,9 @@
 package pt.ieeta.bft4pnt
 
+import java.util.HashMap
 import java.util.HashSet
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.msg.Error
@@ -14,9 +16,8 @@ import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.store.IClientStore
 import pt.ieeta.bft4pnt.store.IDataStore
 import pt.ieeta.bft4pnt.store.IStore
-import java.util.HashMap
-import pt.ieeta.bft4pnt.msg.Record
-import org.slf4j.LoggerFactory
+import java.util.Set
+import java.security.PublicKey
 
 @FinalFieldsConstructor
 class PNTServer {
@@ -24,19 +25,24 @@ class PNTServer {
   
   val MessageBroker broker
   val IStore store
+  val (Integer)=>PublicKey resolver
   
-  // the values do not require persistence.
-  val counts = new HashMap<String, Integer>
+  // these values do not require persistence.
+  // <UDI-F-Ik-Dk>
+  val counts = new HashMap<String, Set<Integer>>
   
-  private def int count(String source, Record record, Update update) {
-    val key = '''«source»-«record.udi»-«record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
-    val value = counts.get(key) ?: 0
-    counts.put(key, value + 1)
-    return value + 1
+  private def int countReplicas(Message msg, Update update) {
+    val key = '''«msg.record.udi»-«msg.record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
+    val replicas = counts.get(key) ?: new HashSet<Integer>
+    
+    for (party : msg.replicaParties)
+      replicas.add(party)
+    
+    return replicas.size
   }
   
-  private def void clear(String source, Record record, Update update) {
-    val key = '''«source»-«record.udi»-«record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
+  private def void clearReplicas(Message msg, Update update) {
+    val key = '''«msg.record.udi»-«msg.record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
     counts.remove(key)
   }
   
@@ -107,9 +113,9 @@ class PNTServer {
     // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
     val has = cs.data.has(msg.record.fingerprint, body.fingerprint)
     switch has {
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.NO: reply.apply(new Message(msg.record, Reply.noData))
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.YES: {
+      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData))
+      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
+      case IDataStore.Status.YES: {
         val vote = new Message(msg.record, Reply.vote(store.quorum, body))
         record.vote = vote
         reply.apply(vote)
@@ -120,9 +126,9 @@ class PNTServer {
   dispatch private def void handle(IClientStore cs, Message msg, Insert body, (Message)=>void reply) {
     val has = cs.data.has(msg.record.fingerprint, msg.record.fingerprint)
     switch has {
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.NO: reply.apply(new Message(msg.record, Reply.noData))
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
-      case pt.ieeta.bft4pnt.store.IDataStore$Status.YES: {
+      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData))
+      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
+      case IDataStore.Status.YES: {
         // verify slices
         if (cs.data.verify(msg.record.fingerprint, msg.record.fingerprint, body.slices)) {
           reply.apply(new Message(msg.record, Error.invalid("Invalid slices!")))
@@ -177,6 +183,12 @@ class PNTServer {
       return;
     }
     
+    //verify replicas
+    if (!msg.verifyReplicas(resolver)) {
+      reply.apply(new Message(msg.record, Error.invalid("Invalid replicas!")))
+      return;
+    }
+    
     // Proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
     val current = record.vote
     if (current !== null) {
@@ -190,7 +202,7 @@ class PNTServer {
         || currentBody.propose.round > body.propose.round
       ) {
         //has (n - t) commits to override?
-        val counts = count(msg.source, msg.record, body)
+        val counts = countReplicas(msg, body)
         if (counts < nMt) {
           //TODO: the replication mechanism should have their own messages. The source of these cannot be properly identified!
           reply.apply(current)
@@ -206,7 +218,7 @@ class PNTServer {
     }
     
     // Accepted
-    clear(msg.source, msg.record, body)
+    clearReplicas(msg, body)
     record.update(msg)
     reply.apply(new Message(msg.record, Reply.ack))
   }

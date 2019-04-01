@@ -7,4 +7,6 @@ class ArraySlice {
   public val byte[] data
   public val int offset
   public val int length
+  
+  def remove(int less) { new ArraySlice(data, offset, length - less) }
 }

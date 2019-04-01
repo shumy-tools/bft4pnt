@@ -10,7 +10,7 @@ class SignatureHelper {
   static def byte[] sign(PrivateKey prvKey, ArraySlice slice) {
     val signer = Signature.getInstance(algorithm, "BC") => [
       initSign(prvKey)
-      update(slice.data, slice.offset, slice.length - slice.offset)
+      update(slice.data, slice.offset, slice.length)
     ]
     
     return signer.sign
@@ -19,7 +19,7 @@ class SignatureHelper {
   static def boolean verify(PublicKey pubKey, ArraySlice slice, byte[] signature) {
     val verifier = Signature.getInstance(algorithm, "BC") => [
       initVerify(pubKey)
-      update(slice.data, slice.offset, slice.length - slice.offset - signature.length - 4) //also remove the int field for the signature size
+      update(slice.data, slice.offset, slice.length)
     ]
     
     return verifier.verify(signature)

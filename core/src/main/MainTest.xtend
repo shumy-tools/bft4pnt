@@ -18,13 +18,11 @@ class MainTest {
   def static void main(String[] args) {
     Security.addProvider(new BouncyCastleProvider)
     
-    val addresses = new HashMap<String, PublicKey>
-    val (InetSocketAddress)=>PublicKey resolver = [
-      val address = '''«hostString»:«port»'''
-      val key = addresses.get(address)
+    val partyKeys = new HashMap<Integer, PublicKey>
+    val (Integer)=>PublicKey resolver = [
+      val key = partyKeys.get(it)
       if (key === null)
-        throw new RuntimeException('''No key for address: «address»''')
-      
+        throw new RuntimeException('''No key for party: «it»''')
       key
     ]
     
@@ -32,11 +30,11 @@ class MainTest {
     for (i : 0..6) {
       val inet = new InetSocketAddress("127.0.0.1", 3001 + i)
       val keys = KeyPairHelper.genKeyPair
-      addresses.put('''«inet.hostString»:«inet.port»''', keys.public)
+      partyKeys.put(i + 1, keys.public)
       
-      val broker = new MessageBroker(inet, keys.private, resolver)
+      val broker = new MessageBroker(inet, keys)
       val store = new MemoryStore(new QuorumConfig(7, 1))
-      new PNTServer(broker, store).start
+      new PNTServer(broker, store, resolver).start
       parties.add(inet)
     }
     
@@ -44,9 +42,7 @@ class MainTest {
     
     val inet = new InetSocketAddress("127.0.0.1", 3000)
     val keys = KeyPairHelper.genKeyPair
-    addresses.put('''«inet.hostString»:«inet.port»''', keys.public)
-    
-    val client = new MessageBroker(inet, keys.private, resolver)
+    val client = new MessageBroker(inet, keys)
     
     val record = new Record("client-1", "finger-123")
     val body = new Insert("DICOM")

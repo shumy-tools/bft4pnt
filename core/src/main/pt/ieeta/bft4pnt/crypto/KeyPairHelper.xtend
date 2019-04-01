@@ -43,10 +43,6 @@ class KeyPairHelper {
     return prvConst.newInstance(pki)
   }
   
-  def static byte[] write(PublicKey key) {
-    return key.encoded
-  }
-  
   def static String encode(PublicKey key) {
     val pubKey = key as BCEdDSAPublicKey
     return new String(Base64.encode(pubKey.encoded), StandardCharsets.UTF_8)

@@ -31,7 +31,7 @@ class Slices implements ISection {
     if (size !== 0) {
       val number = buf.readInt
       val slices = new ArrayList<String>(number)
-      for (n : 0..number)
+      for (n : 0 ..< number)
         slices.add(Message.readString(buf))
         
       return new Slices(size, slices)

@@ -4,13 +4,35 @@ import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.security.KeyPair
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.util.HashMap
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.ArraySlice
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
-class Message implements ISection {
+@FinalFieldsConstructor
+class Replica implements ISection {
+  public val ArraySlice slice
+  public val int party
+  public val byte[] signature
+  
+  override write(ByteBuf buf) {
+    buf.writeInt(party)
+    Message.writeBytes(buf, signature)
+  }
+  
+  static def Replica read(ByteBuf buf, ArraySlice slice) {
+    val party = buf.readInt
+    val signature = Message.readBytes(buf)
+    
+    return new Replica(slice, party, signature)
+  }
+} 
+
+class Message {
   //WARNING: don't change the position of defined types.
   enum Type {
     INSERT, UPDATE, PROPOSE, VOTE, GET, ERROR
@@ -19,13 +41,30 @@ class Message implements ISection {
   public var InetSocketAddress address = null
   
   public var long id = 0
-  public var String source = null
-  byte[] signature = null
   
   public val int version
   public val Type type
   public val Record record
   public val ISection body
+  
+  var PublicKey source
+  var byte[] signature
+  
+  val replicas = new HashMap<Integer, Replica>
+  val rParties = new HashMap<Integer, PrivateKey>
+  
+  def getReplicaParties() { replicas.keySet }
+  
+  def verifyReplicas((Integer)=>PublicKey resolver) {
+    for (party : replicas.keySet) {
+      val key = resolver.apply(party)
+      val replica = replicas.get(party)
+      if (!SignatureHelper.verify(key, replica.slice, replica.signature))
+        return false
+    }
+    
+    return true
+  } 
   
   new(Record record, ISection body) {
     this.version = 1
@@ -49,27 +88,40 @@ class Message implements ISection {
     this.body = body
   }
   
-  override write(ByteBuf buf) {
-    //TODO: write data cache?
-    
+  def setReplica(int party, PrivateKey key) {
+    rParties.put(party, key)
+  }
+  
+  private def void write(ByteBuf buf) {
     buf.writeLong(id) // id is not part of the message signature
     buf.writeShort(version)
     buf.writeShort(type.ordinal)
     
     record.write(buf)
     body.write(buf)
-    
-    if (signature !== null)
-      writeBytes(buf, signature)
   }
   
-  def ByteBuf write(PrivateKey prvKey) {
+  def ByteBuf write(KeyPair keys) {
     PooledByteBufAllocator.DEFAULT.buffer(1024) => [
       this.write(it)
+      val block = signedBlock
       
       //sign the message
-      this.signature = SignatureHelper.sign(prvKey, signedBlock)
+      this.source = keys.public
+      writeBytes(it, source.encoded)
+      
+      this.signature = SignatureHelper.sign(keys.private, block)
       writeBytes(it, signature)
+      
+      if (type === Type.UPDATE) {
+        writeInt(replicas.size)
+        for (party : rParties.keySet) {
+          val rSig = SignatureHelper.sign(rParties.get(party), block)
+          val replica = new Replica(block, party, rSig)
+          replicas.put(party, replica)
+          replica.write(it)
+        }
+      }
     ]
   }
   
@@ -79,10 +131,10 @@ class Message implements ISection {
     ]
   }
   
-  static def ReadResult read(ByteBuf buf, PublicKey pubKey) {
+  static def ReadResult read(ByteBuf buf) {
     buf.retain
     try {
-      val data = buf.signedBlock
+      val block = buf.signedBlock
       val id = buf.readLong // id is not part of the message signature
       
       val version = buf.readShort as int
@@ -105,15 +157,36 @@ class Message implements ISection {
         default: return new ReadResult("Unrecognized message type!")
       }
       
-      // Parties should always verify the correctness of digital signatures before accepting any messages
+      // block signature ends here. Count the remaining bytes to remove.
+      var less = 0
+      
+      val key = readBytes(buf)
+      less += 4 + key.length
+      
       val signature = readBytes(buf)
-      if (!SignatureHelper.verify(pubKey, data, signature))
+      less += 4 + signature.length
+      
+      val replicas = new HashMap<Integer, Replica>
+      if (type === Type.UPDATE) {
+        val number = buf.readInt
+        less += 4
+        for (n : 0 ..< number) {
+          val rep = Replica.read(buf, block)
+          less += 4 + rep.signature.length
+          replicas.put(rep.party, rep)
+        }
+      }
+      
+      // Verify the correctness of the source digital signature
+      val source = KeyPairHelper.read(key)
+      if (!SignatureHelper.verify(source, block.remove(less), signature))
         return new ReadResult("Incorrect signature!")
       
       val msg = new Message(version, type, record, body)
       msg.id = id
-      msg.source = KeyPairHelper.encode(pubKey)
+      msg.source = source
       msg.signature = signature
+      msg.replicas.putAll(replicas)
       
       return new ReadResult(msg)
     } catch (Throwable ex) {
@@ -137,7 +210,7 @@ class Message implements ISection {
       buf.getBytes(buf.readerIndex, data)
     }
     
-    return new ArraySlice(data, offset, length)
+    return new ArraySlice(data, offset, length - offset)
   }
   
   package static def void writeString(ByteBuf buf, String value) {

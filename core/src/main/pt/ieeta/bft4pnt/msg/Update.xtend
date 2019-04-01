@@ -16,7 +16,7 @@ class Vote implements ISection {
   public val byte[] signature
   
   override write(ByteBuf buf) {
-    val bKey = KeyPairHelper.write(key)
+    val bKey = key.encoded
     Message.writeBytes(buf, bKey)
     Message.writeBytes(buf, signature)
   }
