@@ -9,8 +9,7 @@ interface IStore {
   def QuorumConfig getQuorum()
   def void setQuorum(QuorumConfig quorum)
   
-  def IClientStore get(String udi)
-  def IClientStore create(String udi)
+  def IClientStore getOrCreate(String udi)
 }
 
 interface IClientStore {

@@ -29,7 +29,7 @@ class PNTServer {
   val MessageBroker broker
   val IStore store
   
-  val (Message)=>boolean authorizer // authorize client store creation? Executed if there is no client store.
+  val (Message)=>boolean authorizer // authorize client?
   val (Integer)=>PublicKey resolver
   
   public val extensions = new HashMap<String, IExtension>
@@ -59,13 +59,8 @@ class PNTServer {
     broker.start([
       logger.info("PNT-READY {} on {}", '''«hostString»:«port»''')
     ], [ inetSource, msg |
-      val cs = store.get(msg.record.udi) ?: {
-        if (authorizer.apply(msg))
-          store.create(msg.record.udi)
-      }
-        
-      if (cs === null) {
-        val reply = new Message(msg.record, Error.unauthorized("Non existent UDI!")) => [
+      if (!authorizer.apply(msg)) {
+        val reply = new Message(msg.record, Error.unauthorized("Non authorized UDI!")) => [
           id = msg.id
         ]
         
@@ -73,11 +68,8 @@ class PNTServer {
         return;
       }
       
+      val cs = store.getOrCreate(msg.record.udi)
       synchronized(cs) {
-        //TODO: verify source authorization (client or party)
-        //msg.source
-        
-        //TODO: Parties should always verify the correctness of fingerprints after receiving the data block.
         handle(cs, msg, msg.body)[ reply |
           reply.id = msg.id
           broker.send(inetSource, reply)
@@ -236,12 +228,9 @@ class PNTServer {
     if (current !== null) {
       val currentBody = current.body as Reply
       
-      // Cannot directly accept a commit for a different proposal.
       // Proposals can only be overridden by commits of the same or higher rounds
-      if (
-        currentBody.propose.index != body.propose.index
-        || currentBody.propose.fingerprint != body.propose.fingerprint
-        || currentBody.propose.round > body.propose.round
+      if (currentBody.propose.round > body.propose.round &&
+        (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
       ) {
         //has (n - t) commits to override?
         val counts = countReplicas(msg, body)
@@ -252,19 +241,27 @@ class PNTServer {
       }
     }
     
-    // verify fingerprints
-    if (!cs.data.verify(body.propose.fingerprint, body.slices)) {
-      reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
-      return;
+    // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
+    val has = cs.data.has(body.propose.fingerprint)
+    switch has {
+      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
+      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
+      case IDataStore.Status.YES: {
+        // verify fingerprints
+        if (!cs.data.verify(body.propose.fingerprint, body.slices)) {
+          reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
+          return;
+        }
+        
+        //execute update extension
+        val ext = extensions.get(record.type)
+        if (ext === null || ext.update(cs, msg))
+          record.update(msg)
+        
+        clearReplicas(msg, body)
+        reply.apply(new Message(msg.record, Reply.ack(party)))
+      }
     }
-    
-    //execute update extension
-    val ext = extensions.get(record.type)
-    if (ext === null || ext.update(cs, msg))
-      record.update(msg)
-    
-    clearReplicas(msg, body)
-    reply.apply(new Message(msg.record, Reply.ack(party)))
   }
   
   dispatch private def void handle(IClientStore cs, Message msg, Get body, (Message)=>void reply) {

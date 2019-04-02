@@ -25,7 +25,7 @@ class Propose implements ISection {
     return new Propose(index, fingerprint, round)
   }
   
-  static def Message create(long msgId, String udi, String rec, String data, int index, int round) {
+  static def Message create(long msgId, String udi, String rec, String data, int index, long round) {
     val block = data.getBytes(StandardCharsets.UTF_8)
     val record = new Record(udi, rec)
     val body = new Propose(index, HashHelper.digest(block), round)

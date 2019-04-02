@@ -24,9 +24,7 @@ class MemoryStore implements IStore {
     this.quorum = quorum
   }
   
-  override get(String udi) { clients.get(udi) }
-  
-  override create(String udi) {
+  override getOrCreate(String udi) {
     clients.get(udi) ?: {
       val created = new MemoryClientStore
       clients.put(udi, created)
