@@ -38,9 +38,9 @@ interface IDataStore {
   enum Status { YES, NO, PENDING }
   
   // use record == dk for inserts
-  def Status has(String record, String dk)
-  def boolean verify(String record, String dk, Slices slices)
+  def Status has(String key)
+  def boolean verify(String key, Slices slices)
   
-  def void store(String record, String dk, byte[] data)
-  def void store(String record, String dk, ArraySlice slice)
+  def void store(String key, byte[] data)
+  def void store(String key, ArraySlice slice)
 }

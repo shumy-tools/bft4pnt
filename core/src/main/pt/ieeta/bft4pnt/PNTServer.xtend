@@ -18,11 +18,14 @@ import pt.ieeta.bft4pnt.spi.IClientStore
 import pt.ieeta.bft4pnt.spi.IDataStore
 import pt.ieeta.bft4pnt.spi.IExtension
 import pt.ieeta.bft4pnt.spi.IStore
+import org.slf4j.LoggerFactory
+import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
 @FinalFieldsConstructor
 class PNTServer {
-  //static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
+  static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
   
+  val Integer party
   val MessageBroker broker
   val IStore store
   
@@ -50,8 +53,12 @@ class PNTServer {
     counts.remove(key)
   }
   
+  def isReady() { broker.ready }
+  
   def void start() {
-    broker.start[ msg |
+    broker.start([
+      logger.info("PNT-READY {} on {}", '''«hostString»:«port»''')
+    ], [ inetSource, msg |
       val cs = store.get(msg.record.udi) ?: {
         if (authorizer.apply(msg))
           store.create(msg.record.udi)
@@ -60,10 +67,9 @@ class PNTServer {
       if (cs === null) {
         val reply = new Message(msg.record, Error.unauthorized("Non existent UDI!")) => [
           id = msg.id
-          address = msg.address
         ]
         
-        broker.send(reply)
+        broker.send(inetSource, reply)
         return;
       }
       
@@ -73,15 +79,11 @@ class PNTServer {
         
         //TODO: Parties should always verify the correctness of fingerprints after receiving the data block.
         handle(cs, msg, msg.body)[ reply |
-          reply => [
-            id = msg.id
-            address = msg.address
-          ]
-          
-          broker.send(reply)
+          reply.id = msg.id
+          broker.send(inetSource, reply)
         ]
       }
-    ]
+    ])
   }
   
   dispatch private def void handle(IClientStore cs, Message msg, Insert body, (Message)=>void reply) {
@@ -94,16 +96,16 @@ class PNTServer {
     
     // is data directly in the message?
     if (msg.data !== null)
-      cs.data.store(msg.record.fingerprint, msg.record.fingerprint, msg.data)
+      cs.data.store(msg.record.fingerprint, msg.data)
     
-    val has = cs.data.has(msg.record.fingerprint, msg.record.fingerprint)
+    val has = cs.data.has(msg.record.fingerprint)
     switch has {
-      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData))
-      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
+      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
+      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
       case IDataStore.Status.YES: {
-        // verify slices
-        if (cs.data.verify(msg.record.fingerprint, msg.record.fingerprint, body.slices)) {
-          reply.apply(new Message(msg.record, Error.invalid("Invalid slices!")))
+        // verify fingerprints
+        if (!cs.data.verify(msg.record.fingerprint, body.slices)) {
+          reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
           return;
         }
         
@@ -111,7 +113,7 @@ class PNTServer {
         if (ext === null || ext.insert(cs, msg))
           cs.insert(msg)
         
-        reply.apply(new Message(msg.record, Reply.ack))
+        reply.apply(new Message(msg.record, Reply.ack(party)))
       }
     }
   }
@@ -120,6 +122,7 @@ class PNTServer {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
+      logger.error("Non existent record (rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
@@ -132,7 +135,8 @@ class PNTServer {
     }
     
     // Parties only accept proposals if messages for all past fingerprints exist.
-    if (body.index === record.lastCommit + 1) {
+    if (body.index > record.lastCommit + 1) {
+      logger.error("Non existent past commits (index={}, last={})", body.index, record.lastCommit)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent past commits!")))
       return;
     }
@@ -159,15 +163,15 @@ class PNTServer {
     
     // is data directly in the message?
     if (msg.data !== null)
-      cs.data.store(msg.record.fingerprint, body.fingerprint, msg.data)
+      cs.data.store(body.fingerprint, msg.data)
     
     // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
-    val has = cs.data.has(msg.record.fingerprint, body.fingerprint)
+    val has = cs.data.has(body.fingerprint)
     switch has {
-      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData))
-      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving))
+      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
+      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
       case IDataStore.Status.YES: {
-        val vote = new Message(msg.record, Reply.vote(store.quorum, body))
+        val vote = new Message(msg.record, Reply.vote(party, store.quorum, body))
         record.vote = vote
         reply.apply(vote)
       }
@@ -181,6 +185,7 @@ class PNTServer {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
+      logger.error("Non existent record (rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
@@ -195,16 +200,19 @@ class PNTServer {
       }
     }
     
-    // An update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
-    val rVote = Reply.vote(body.quorum, body.propose)
-    val vMsg = new Message(msg.version, Message.Type.REPLY, msg.record, rVote)
-    val data = Message.getSignedBlock(vMsg.write)
-    
     // Votes with valid signatures with the exact same content structure (F, C, Ik, Dk, Ra)?
-    val parties = new HashSet<String>
+    val parties = new HashSet<Integer>
     for (vote : body.votes) {
       parties.add(vote.party)
-      if (!SignatureHelper.verify(vote.key, data, vote.signature)) {
+      
+      // An update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
+      val rVote = Reply.vote(vote.party, body.quorum, body.propose)
+      val vMsg = new Message(msg.version, Message.Type.REPLY, msg.record, rVote)
+      val data = Message.getSignedBlock(vMsg.write)
+      
+      val key = resolver.apply(vote.party)
+      if (!SignatureHelper.verify(key, data, vote.signature)) {
+        logger.error("Invalid vote (party={}, key={})", vote.party, KeyPairHelper.encode(key))
         reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
         return;
       }
@@ -212,6 +220,7 @@ class PNTServer {
     
     // (n−t) reply votes from different parties?
     if (parties.size < nMt) {
+      logger.error("Not enough votes (v={}, n={}, t={}, (n-t)={})", parties.size, conf.n, conf.t, nMt)
       reply.apply(new Message(msg.record, Error.invalid("Not enough votes!")))
       return;
     }
@@ -237,16 +246,15 @@ class PNTServer {
         //has (n - t) commits to override?
         val counts = countReplicas(msg, body)
         if (counts < nMt) {
-          //TODO: the replication mechanism should have their own messages. The source of these cannot be properly identified!
           reply.apply(current)
           return;
         }
       }
     }
     
-    // verify slices
-    if (cs.data.verify(msg.record.fingerprint, body.propose.fingerprint, body.slices)) {
-      reply.apply(new Message(msg.record, Error.invalid("Invalid slices!")))
+    // verify fingerprints
+    if (!cs.data.verify(body.propose.fingerprint, body.slices)) {
+      reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
       return;
     }
     
@@ -256,13 +264,14 @@ class PNTServer {
       record.update(msg)
     
     clearReplicas(msg, body)
-    reply.apply(new Message(msg.record, Reply.ack))
+    reply.apply(new Message(msg.record, Reply.ack(party)))
   }
   
   dispatch private def void handle(IClientStore cs, Message msg, Get body, (Message)=>void reply) {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
+      logger.error("Non existent record (rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }

@@ -2,6 +2,8 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import java.nio.charset.StandardCharsets
+import pt.ieeta.bft4pnt.crypto.HashHelper
 
 @FinalFieldsConstructor
 class Insert implements ISection {
@@ -23,5 +25,16 @@ class Insert implements ISection {
     val slices = Slices.read(buf)
     
     return new Insert(type, slices)
+  }
+  
+  static def Message create(long msgId, String udi, String type, String data) {
+    val block = data.getBytes(StandardCharsets.UTF_8)
+    val record = new Record(udi, HashHelper.digest(block))
+    val body = new Insert(type)
+    
+    return new Message(record, body) => [
+      id = msgId
+      data = block
+    ]
   }
 }

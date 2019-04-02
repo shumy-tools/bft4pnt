@@ -8,7 +8,7 @@ import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 @FinalFieldsConstructor
 class Slices implements ISection {
   public val int size               //in MB, 0 if there are no slices
-  public val List<String> slices    //fingerprints of sclices
+  public val List<String> slices    //fingerprints of slices
   
   new() {
     this.size = 0
@@ -19,9 +19,9 @@ class Slices implements ISection {
     buf.writeInt(size)
     
     if (size !== 0) {
-      buf.writeInt(slices.length)
+      buf.writeInt(slices.size)
       for (slice : slices)
-        Message.writeString(buf, slice)  
+        Message.writeString(buf, slice)
     }
   }
   

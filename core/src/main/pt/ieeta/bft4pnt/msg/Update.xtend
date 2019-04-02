@@ -4,31 +4,23 @@ import io.netty.buffer.ByteBuf
 import java.util.ArrayList
 import java.util.List
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
-import java.security.PublicKey
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import org.bouncycastle.util.encoders.Base64
-import java.nio.charset.StandardCharsets
+import java.util.Map
 
 @FinalFieldsConstructor
 class Vote implements ISection {
-  public val String party
-  public val PublicKey key
+  public val Integer party
   public val byte[] signature
   
   override write(ByteBuf buf) {
-    val bKey = key.encoded
-    Message.writeBytes(buf, bKey)
+    buf.writeInt(party)
     Message.writeBytes(buf, signature)
   }
   
   static def Vote read(ByteBuf buf) {
-    val bKey = Message.readBytes(buf)
-    val key = KeyPairHelper.read(bKey)
-    
+    val party = buf.readInt
     val signature = Message.readBytes(buf)
     
-    val party = new String(Base64.encode(bKey), StandardCharsets.UTF_8)
-    return new Vote(party, key, signature)
+    return new Vote(party, signature)
   }
 }
 
@@ -65,7 +57,7 @@ class Update implements ISection {
     
     val number = buf.readInt
     val votes = new ArrayList<Vote>(number)
-    for (n : 0..number) {
+    for (n : 0 ..< number) {
       val vote = Vote.read(buf)
       votes.add(vote)
     }
@@ -73,5 +65,29 @@ class Update implements ISection {
     val slices = Slices.read(buf)
     
     return new Update(quorum, propose, votes, slices)
+  }
+  
+  static def Message create(long msgId, String udi, String rec, QuorumConfig quorum, Propose propose, Map<Integer, Message> voteReplies) {
+    val votes = new ArrayList<Vote>
+    for (party : voteReplies.keySet) {
+      val msgReply = voteReplies.get(party)
+      val reply = msgReply.body
+      if (reply instanceof Reply) {
+        if (reply.type === Reply.Type.VOTE
+          && reply.quorum !== null && reply.quorum.n === quorum.n && reply.quorum.t === quorum.t
+          && reply.propose !== null && reply.propose.index === propose.index && reply.propose.fingerprint == propose.fingerprint && reply.propose.round === propose.round
+        ) {
+          val vote = new Vote(party, msgReply.signature)
+          votes.add(vote) 
+        }
+      }
+    }
+    
+    val record = new Record(udi, rec)
+    val body = new Update(quorum, propose, votes)
+    
+    return new Message(record, body) => [
+      id = msgId
+    ]
   }
 }

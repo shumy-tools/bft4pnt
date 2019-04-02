@@ -2,7 +2,6 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
-import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.PrivateKey
@@ -37,8 +36,6 @@ class Message {
     INSERT, UPDATE, PROPOSE, REPLY, GET, ERROR
   }
   
-  public var InetSocketAddress address = null
-  
   public var long id = 0
   
   public val int version
@@ -54,6 +51,7 @@ class Message {
   public var byte[] data = null
   
   def getSource() { signature.source }
+  def getSignature() { signature.signature }
   def getReplicaParties() { replicas.keySet }
   
   def verifyReplicas((Integer)=>PublicKey resolver) {

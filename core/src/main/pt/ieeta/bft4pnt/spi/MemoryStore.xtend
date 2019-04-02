@@ -1,8 +1,12 @@
 package pt.ieeta.bft4pnt.spi
 
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.ArrayList
+import java.util.Arrays
 import java.util.HashMap
 import java.util.concurrent.ConcurrentHashMap
+import org.bouncycastle.util.encoders.Base64
 import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.msg.Insert
@@ -10,7 +14,6 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.QuorumConfig
 import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.msg.Update
-import java.util.Arrays
 
 class MemoryStore implements IStore {
   @Accessors var QuorumConfig quorum
@@ -60,14 +63,17 @@ class ClientRecord implements IRecord {
   }
   
   override lastCommit() { last }
-  override getCommit(int index) { history.get(index) }
+  override getCommit(int index) {
+    if (index > last) return null
+    history.get(index)
+  }
   
   override update(Message msg) {
     val update = msg.body as Update
     if (update.propose.index > history.size)
       throw new RuntimeException("Trying to update ahead!")
     
-    if (update.propose.index == history.size)
+    if (update.propose.index === history.size)
       history.add(msg)
     else
       history.set(update.propose.index, msg)
@@ -83,26 +89,31 @@ class ClientRecord implements IRecord {
 class ClientData implements IDataStore {
   val store = new HashMap<String, byte[]>
   
-  override has(String record, String dk) {
-    val key = '''«record»-«dk»'''
+  override has(String key) {
     if (store.get(key) === null)
       return Status.NO
     
     return Status.YES
   }
   
-  override verify(String record, String dk, Slices slices) {
-    true
+  override verify(String key, Slices slices) {
+    val value = store.get(key)
+    
+    val digest = MessageDigest.getInstance("SHA-256")
+    val dRes = digest.digest(value)
+    val fingerprint = new String(Base64.encode(dRes), StandardCharsets.UTF_8)
+    
+    return key == fingerprint
+    
+    //TODO: verify record fingerprint and slices
   }
   
-  override store(String record, String dk, byte[] data) {
-    val key = '''«record»-«dk»'''
+  override store(String key, byte[] data) {
     val trg = Arrays.copyOf(data, data.length)
     store.put(key, trg)
   }
   
-  override store(String record, String dk, ArraySlice slice) {
-    val key = '''«record»-«dk»'''
+  override store(String key, ArraySlice slice) {
     val trg = newByteArrayOfSize(slice.length)
     System.arraycopy(slice.data, slice.offset, trg, 0, slice.length)
     store.put(key, trg)
