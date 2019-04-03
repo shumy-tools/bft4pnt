@@ -1,16 +1,15 @@
 package bft4pnt
 
 import java.util.HashMap
+import java.util.concurrent.atomic.AtomicInteger
 import net.jodah.concurrentunit.Waiter
 import org.junit.jupiter.api.Test
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
-import pt.ieeta.bft4pnt.msg.QuorumConfig
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
-import java.util.concurrent.atomic.AtomicInteger
 
 class ProtocolTest {
   def void assertError(Waiter waiter, Message reply, String msg) {
@@ -37,8 +36,7 @@ class ProtocolTest {
   @Test
   def void testBasicInsertUpdate() {
     val waiter = new Waiter
-    val quorum = new QuorumConfig(5, 1)
-    val net  = InitQuorum.init(quorum)
+    val net  = InitQuorum.init(3000, 4, 1)
     
     val udi = "udi-1"
     val insert = Insert.create(1L, udi, "test", "data-1")
@@ -55,17 +53,17 @@ class ProtocolTest {
         val rVote = reply.body as Reply
         voteReplies.put(rVote.party, reply)
         
-        if (voteReplies.size == 3) {
-          val u1 = Update.create(3L, udi, insert.record.fingerprint, quorum, p1.body as Propose, voteReplies)
+        if (voteReplies.size == 2) {
+          val u1 = Update.create(3L, udi, insert.record.fingerprint, net.quorum.uid, p1.body as Propose, voteReplies)
           net.send(party, u1)
         }
         
-        if (voteReplies.size == 4) {
+        if (voteReplies.size == 3) {
           // should ignore lower rounds
           val p2 = Propose.create(4L, udi, insert.record.fingerprint, "data-3", 1, 1)
           net.send(party, p2)
           
-          val u2 = Update.create(5L, udi, insert.record.fingerprint, quorum, p1.body as Propose, voteReplies)
+          val u2 = Update.create(5L, udi, insert.record.fingerprint, net.quorum.uid, p1.body as Propose, voteReplies)
           net.send(party, u2)
         }
       }
@@ -82,7 +80,7 @@ class ProtocolTest {
       }
     ]
     
-    for (party : 1 .. 5)
+    for (party : 1 .. 4)
       net.send(party, insert)
     waiter.await(2000)
   }
@@ -99,8 +97,7 @@ class ProtocolTest {
         3Ua   3Ua   3Ua   3Ua
     */
     val waiter = new Waiter
-    val quorum = new QuorumConfig(4, 1)
-    val net  = InitQuorum.init(quorum)
+    val net  = InitQuorum.init(3005, 4, 1)
     
     val udi = "udi-1"
     val insert = Insert.create(1L, udi, "test", "data-i")
@@ -124,7 +121,7 @@ class ProtocolTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(4L, udi, insert.record.fingerprint, quorum, pa1.body as Propose, voteReplies)
+            val ua1 = Update.create(4L, udi, insert.record.fingerprint, net.quorum.uid, pa1.body as Propose, voteReplies)
             for (sendTo : 1 .. 3)
               net.send(sendTo, ua1)
             voteReplies.clear
@@ -150,7 +147,7 @@ class ProtocolTest {
         val rVote = reply.body as Reply
         voteReplies.put(rVote.party, reply)
         if (voteReplies.size == 3) {
-          val ua2 = Update.create(6L, udi, insert.record.fingerprint, quorum, pa3.body as Propose, voteReplies)
+          val ua2 = Update.create(6L, udi, insert.record.fingerprint, net.quorum.uid, pa3.body as Propose, voteReplies)
           for (sendTo : 1 .. 4)
             net.send(sendTo, ua2)
           voteReplies.clear

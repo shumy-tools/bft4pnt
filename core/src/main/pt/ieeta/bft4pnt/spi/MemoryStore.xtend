@@ -9,20 +9,22 @@ import java.util.concurrent.ConcurrentHashMap
 import org.bouncycastle.util.encoders.Base64
 import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
+import pt.ieeta.bft4pnt.msg.ISection
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.QuorumConfig
 import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.msg.Update
+import pt.ieeta.bft4pnt.msg.Quorum
 
 class MemoryStore implements IStore {
-  @Accessors var QuorumConfig quorum
-  
+  val objs = new ConcurrentHashMap<String, ISection>
   val clients = new ConcurrentHashMap<String, IClientStore>
   
-  new(QuorumConfig quorum) {
-    this.quorum = quorum
+  new(Quorum quorum) {
+    objs.put(quorum.uid, quorum)
   }
+  
+  override <T extends ISection> get(Class<T> type, String key) { objs.get(key) as T }
   
   override getOrCreate(String udi) {
     clients.get(udi) ?: {

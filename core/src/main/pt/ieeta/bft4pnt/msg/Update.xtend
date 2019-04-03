@@ -26,13 +26,13 @@ class Vote implements ISection {
 
 @FinalFieldsConstructor
 class Update implements ISection {
-  public val QuorumConfig quorum
+  public val String quorum
   public val Propose propose
   
   public val List<Vote> votes
   public val Slices slices
   
-  new(QuorumConfig quorum, Propose propose, List<Vote> votes) {
+  new(String quorum, Propose propose, List<Vote> votes) {
     this.quorum = quorum
     this.propose = propose
     
@@ -41,7 +41,7 @@ class Update implements ISection {
   }
   
   override write(ByteBuf buf) {
-    quorum.write(buf)
+    Message.writeString(buf, quorum)
     propose.write(buf)
     
     buf.writeInt(votes.size)
@@ -52,7 +52,7 @@ class Update implements ISection {
   }
   
   static def Update read(ByteBuf buf) {
-    val quorum = QuorumConfig.read(buf)
+    val quorum = Message.readString(buf)
     val propose = Propose.read(buf)
     
     val number = buf.readInt
@@ -67,14 +67,14 @@ class Update implements ISection {
     return new Update(quorum, propose, votes, slices)
   }
   
-  static def Message create(long msgId, String udi, String rec, QuorumConfig quorum, Propose propose, Map<Integer, Message> voteReplies) {
+  static def Message create(long msgId, String udi, String rec, String quorum, Propose propose, Map<Integer, Message> voteReplies) {
     val votes = new ArrayList<Vote>
     for (party : voteReplies.keySet) {
       val msgReply = voteReplies.get(party)
       val reply = msgReply.body
       if (reply instanceof Reply) {
         if (reply.type === Reply.Type.VOTE
-          && reply.quorum !== null && reply.quorum.n === quorum.n && reply.quorum.t === quorum.t
+          && reply.quorum !== null && reply.quorum == quorum
           && reply.propose !== null && reply.propose.index === propose.index && reply.propose.fingerprint == propose.fingerprint && reply.propose.round === propose.round
         ) {
           val vote = new Vote(party, msgReply.signature)

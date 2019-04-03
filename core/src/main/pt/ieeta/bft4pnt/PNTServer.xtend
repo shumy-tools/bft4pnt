@@ -1,36 +1,37 @@
 package pt.ieeta.bft4pnt
 
-import java.security.PublicKey
 import java.util.HashMap
 import java.util.HashSet
 import java.util.Set
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
+import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Get
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
+import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IClientStore
 import pt.ieeta.bft4pnt.spi.IDataStore
 import pt.ieeta.bft4pnt.spi.IExtension
 import pt.ieeta.bft4pnt.spi.IStore
-import org.slf4j.LoggerFactory
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
 @FinalFieldsConstructor
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
   
+  val String qRec // the quorum record
   val Integer party
+  
   val MessageBroker broker
   val IStore store
   
   val (Message)=>boolean authorizer // authorize client?
-  val (Integer)=>PublicKey resolver
   
   public val extensions = new HashMap<String, IExtension>
   
@@ -163,7 +164,8 @@ class PNTServer {
       case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
       case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
       case IDataStore.Status.YES: {
-        val vote = new Message(msg.record, Reply.vote(party, store.quorum, body))
+        val quorum = store.get(Quorum, qRec)
+        val vote = new Message(msg.record, Reply.vote(party, quorum.uid, body))
         record.vote = vote
         reply.apply(vote)
       }
@@ -171,8 +173,14 @@ class PNTServer {
   }
   
   dispatch private def void handle(IClientStore cs, Message msg, Update body, (Message)=>void reply) {
-    val conf = store.quorum
-    val nMt = conf.n - conf.t
+    val quorum = store.get(Quorum, body.quorum)
+    if (quorum === null) {
+      logger.error("Non existent quorum (rec={})", body.quorum)
+      reply.apply(new Message(msg.record, Error.unauthorized("Non existent quorum!")))
+      return;
+    }
+    
+    val nMt = quorum.n - quorum.t
     
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
@@ -202,7 +210,13 @@ class PNTServer {
       val vMsg = new Message(msg.version, Message.Type.REPLY, msg.record, rVote)
       val data = Message.getSignedBlock(vMsg.write)
       
-      val key = resolver.apply(vote.party)
+      val key = quorum.getPartyKey(vote.party)
+      if (key === null) {
+        logger.error("Invalid party (party={})", vote.party)
+        reply.apply(new Message(msg.record, Error.invalid("Invalid party!")))
+        return;
+      }
+      
       if (!SignatureHelper.verify(key, data, vote.signature)) {
         logger.error("Invalid vote (party={}, key={})", vote.party, KeyPairHelper.encode(key))
         reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
@@ -212,13 +226,13 @@ class PNTServer {
     
     // (n−t) reply votes from different parties?
     if (parties.size < nMt) {
-      logger.error("Not enough votes (v={}, n={}, t={}, (n-t)={})", parties.size, conf.n, conf.t, nMt)
+      logger.error("Not enough votes (v={}, n={}, t={}, (n-t)={})", parties.size, quorum.n, quorum.t, nMt)
       reply.apply(new Message(msg.record, Error.invalid("Not enough votes!")))
       return;
     }
     
     //verify replicas
-    if (!msg.verifyReplicas(resolver)) {
+    if (!msg.verifyReplicas(quorum)) {
       reply.apply(new Message(msg.record, Error.invalid("Invalid replicas!")))
       return;
     }

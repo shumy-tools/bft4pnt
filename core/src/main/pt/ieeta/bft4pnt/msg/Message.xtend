@@ -5,7 +5,6 @@ import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.PrivateKey
-import java.security.PublicKey
 import java.util.HashMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.ArraySlice
@@ -54,9 +53,9 @@ class Message {
   def getSignature() { signature.signature }
   def getReplicaParties() { replicas.keySet }
   
-  def verifyReplicas((Integer)=>PublicKey resolver) {
+  def verifyReplicas(Quorum quorum) {
     for (party : replicas.keySet) {
-      val key = resolver.apply(party)
+      val key = quorum.getPartyKey(party)
       val replica = replicas.get(party)
       if (!SignatureHelper.verify(key, replica.slice, replica.signature))
         return false
@@ -257,9 +256,9 @@ class Message {
   private def printType() {
     switch body {
       Insert:   ''', type=«body.type»'''
-      Update:   ''', (n,t)=(«body.quorum.n»,«body.quorum.t») index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size»'''
+      Update:   ''', q=«body.quorum» index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size»'''
       Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
-      Reply:    ''', type=«body.type»«IF body.quorum !== null», (n,t)=(«body.quorum.n»,«body.quorum.t»)«ENDIF»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
+      Reply:    ''', type=«body.type»«IF body.quorum !== null», q=«body.quorum»«ENDIF»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
       Get:      ''', index=«body.index», slices=«body.slices»'''
       Error:    ''', code=«body.code», error=«body.msg»'''
     }

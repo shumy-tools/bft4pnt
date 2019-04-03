@@ -1,13 +1,13 @@
 package pt.ieeta.bft4pnt.spi
 
-import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.QuorumConfig
-import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.crypto.ArraySlice
+import pt.ieeta.bft4pnt.msg.ISection
+import pt.ieeta.bft4pnt.msg.Message
+import pt.ieeta.bft4pnt.msg.Slices
 
 interface IStore {
-  def QuorumConfig getQuorum()
-  def void setQuorum(QuorumConfig quorum)
+  // global objects. These are inserted by extensions into the store backend.
+  def <T extends ISection> T get(Class<T> type, String key)
   
   def IClientStore getOrCreate(String udi)
 }
