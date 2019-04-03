@@ -83,6 +83,7 @@ class PNTServer {
     val ext = extensions.get(body.type)
     val error = ext?.checkInsert(cs, msg, body)
     if (error !== null) {
+      logger.error("Extension constraint error (msg={})", error)
       reply.apply(new Message(msg.record, Error.constraint(error)))
       return;
     }
@@ -123,6 +124,7 @@ class PNTServer {
     val ext = extensions.get(record.type)
     val error = ext?.checkPropose(cs, msg, body)
     if (error !== null) {
+      logger.error("Extension constraint error (msg={})", error)
       reply.apply(new Message(msg.record, Error.constraint(error)))
       return;
     }
