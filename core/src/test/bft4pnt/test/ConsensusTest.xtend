@@ -1,4 +1,4 @@
-package bft4pnt
+package bft4pnt.test
 
 import java.util.HashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -10,6 +10,7 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
+import bft4pnt.test.utils.InitQuorum
 
 class ConsensusTest {
   def void assertError(Waiter waiter, Message reply, String msg) {

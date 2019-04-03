@@ -1,4 +1,4 @@
-package bft4pnt
+package bft4pnt.test.utils
 
 import java.net.InetSocketAddress
 import java.security.KeyPair
@@ -12,7 +12,6 @@ import pt.ieeta.bft4pnt.broker.MessageBroker
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
-import pt.ieeta.bft4pnt.spi.MemoryStore
 
 @FinalFieldsConstructor
 class InitQuorum {

@@ -1,4 +1,4 @@
-package pt.ieeta.bft4pnt.spi
+package bft4pnt.test.utils
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -15,6 +15,10 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.msg.Quorum
+import pt.ieeta.bft4pnt.spi.IStore
+import pt.ieeta.bft4pnt.spi.IClientStore
+import pt.ieeta.bft4pnt.spi.IRecord
+import pt.ieeta.bft4pnt.spi.IDataStore
 
 class MemoryStore implements IStore {
   val objs = new ConcurrentHashMap<String, ISection>
