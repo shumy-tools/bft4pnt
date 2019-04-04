@@ -1,57 +1,62 @@
 package bft4pnt.test.utils
 
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.util.ArrayList
-import java.util.Arrays
 import java.util.HashMap
 import java.util.concurrent.ConcurrentHashMap
-import org.bouncycastle.util.encoders.Base64
 import org.eclipse.xtend.lib.annotations.Accessors
-import pt.ieeta.bft4pnt.crypto.ArraySlice
-import pt.ieeta.bft4pnt.msg.ISection
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.Slices
-import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.msg.Quorum
-import pt.ieeta.bft4pnt.spi.IStore
-import pt.ieeta.bft4pnt.spi.IClientStore
+import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IRecord
-import pt.ieeta.bft4pnt.spi.IDataStore
+import pt.ieeta.bft4pnt.spi.IStore
+import pt.ieeta.bft4pnt.spi.IStoreManager
 
-class MemoryStore implements IStore {
-  val objs = new ConcurrentHashMap<String, ISection>
-  val clients = new ConcurrentHashMap<String, IClientStore>
+class MemoryStoreManager implements IStoreManager {
+  val alias = new ConcurrentHashMap<String, String>
+  val clients = new ConcurrentHashMap<String, IStore>
   
   new(Quorum quorum) {
-    objs.put(quorum.uid, quorum)
+    val msg = Insert.create(0L, "local", "quorum", quorum)
+    alias.put("quorum" , msg.record.fingerprint)
+    local.insert(msg)
   }
   
-  override <T extends ISection> get(Class<T> type, String key) { objs.get(key) as T }
+  override alias(String alias) { this.alias.get(alias) }
+  
+  override local() { internalGetOrCreate("local") }
   
   override getOrCreate(String udi) {
+    if (udi == "local")
+      throw new RuntimeException("Reserved store.")
+    
+    internalGetOrCreate(udi)
+  }
+  
+  private def internalGetOrCreate(String udi) {
     clients.get(udi) ?: {
-      val created = new MemoryClientStore
+      val created = new MemoryStore
       clients.put(udi, created)
       created
     }
   }
 }
 
-class MemoryClientStore implements IClientStore {
+class MemoryStore implements IStore {
   val records = new HashMap<String, IRecord>
-  val data = new ClientData
   
   override insert(Message msg) {
-    records.put(msg.record.fingerprint, new ClientRecord(msg))
+    val rec = new StoreRecord(msg)
+    records.put(msg.record.fingerprint, rec)
+    rec
   }
   
-  override getRecord(String record) { records.get(record) }
-  override getData() { data }
+  override getRecord(String record) {
+    records.get(record)
+  }
 }
 
-class ClientRecord implements IRecord {
+class StoreRecord implements IRecord {
   @Accessors var Message vote
   
   var last = 0
@@ -66,9 +71,13 @@ class ClientRecord implements IRecord {
     insert.type
   }
   
-  override lastCommit() { last }
+  override lastIndex() { last }
+  override lastCommit() { getCommit(last) }
+  
   override getCommit(int index) {
+    if (index === -1) lastCommit
     if (index > last) return null
+    
     history.get(index)
   }
   
@@ -83,43 +92,5 @@ class ClientRecord implements IRecord {
       history.set(update.propose.index, msg)
     
     last = update.propose.index
-  }
-  
-  override slices() {
-    throw new UnsupportedOperationException("TODO: auto-generated method stub")
-  }
-}
-
-class ClientData implements IDataStore {
-  val store = new HashMap<String, byte[]>
-  
-  override has(String key) {
-    if (store.get(key) === null)
-      return Status.NO
-    
-    return Status.YES
-  }
-  
-  override verify(String key, Slices slices) {
-    val value = store.get(key)
-    
-    val digest = MessageDigest.getInstance("SHA-256")
-    val dRes = digest.digest(value)
-    val fingerprint = new String(Base64.encode(dRes), StandardCharsets.UTF_8)
-    
-    return key == fingerprint
-    
-    //TODO: verify record fingerprint and slices
-  }
-  
-  override store(String key, byte[] data) {
-    val trg = Arrays.copyOf(data, data.length)
-    store.put(key, trg)
-  }
-  
-  override store(String key, ArraySlice slice) {
-    val trg = newByteArrayOfSize(slice.length)
-    System.arraycopy(slice.data, slice.offset, trg, 0, slice.length)
-    store.put(key, trg)
   }
 }

@@ -15,18 +15,18 @@ import bft4pnt.test.utils.InitQuorum
 class ConsensusTest {
   def void assertError(Waiter waiter, Message reply, String msg) {
     waiter.assertTrue(reply.body instanceof Error)
-    waiter.assertEquals((reply.body as Error).msg, msg)
+    waiter.assertEquals(msg, (reply.body as Error).msg)
   }
   
   def void assertAck(Waiter waiter, Message reply) {
     waiter.assertTrue(reply.body instanceof Reply)
-    waiter.assertEquals((reply.body as Reply).type, Reply.Type.ACK)
+    waiter.assertEquals(Reply.Type.ACK, (reply.body as Reply).type)
   }
   
   def void assertVote(Waiter waiter, Message reply, long round) {
     waiter.assertTrue(reply.body instanceof Reply)
-    waiter.assertEquals((reply.body as Reply).type, Reply.Type.VOTE)
-    waiter.assertEquals((reply.body as Reply).propose.round, round)
+    waiter.assertEquals(Reply.Type.VOTE, (reply.body as Reply).type)
+    waiter.assertEquals(round, (reply.body as Reply).propose.round)
   }
   
   def void assertUpdate(Waiter waiter, Message reply, String rec, Propose propose) {
@@ -41,7 +41,7 @@ class ConsensusTest {
   
   def void assertNoData(Waiter waiter, Message reply) {
     waiter.assertTrue(reply.body instanceof Reply)
-    waiter.assertEquals((reply.body as Reply).type, Reply.Type.NO_DATA)
+    waiter.assertEquals(Reply.Type.NO_DATA, (reply.body as Reply).type)
   }
   
   @Test
@@ -71,7 +71,7 @@ class ConsensusTest {
         voteReplies.put(rVote.party, reply)
         
         if (voteReplies.size == 2) {
-          val u1 = Update.create(3L, udi, insert.record.fingerprint, net.quorum.uid, pa1.body as Propose, voteReplies)
+          val u1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
           net.send(party, u1)
         }
         
@@ -80,7 +80,7 @@ class ConsensusTest {
           val p2 = Propose.create(4L, udi, insert.record.fingerprint, "data-3", 1, 1L)
           net.send(party, p2)
           
-          val u2 = Update.create(5L, udi, insert.record.fingerprint, net.quorum.uid, pa1.body as Propose, voteReplies)
+          val u2 = Update.create(5L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
           net.send(party, u2)
         }
       }
@@ -142,7 +142,7 @@ class ConsensusTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(3L, udi, insert.record.fingerprint, net.quorum.uid, pa1.body as Propose, voteReplies)
+            val ua1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
             for (sendTo : 1 .. 3)
               net.send(sendTo, ua1)
             voteReplies.clear
@@ -190,7 +190,7 @@ class ConsensusTest {
                     2Pb   2Pb
         1Ua   1Ua   x1Ua  
         3Pa   3Pa   3Pa
-        3Ua   3Ua   3Ua   x3Ua
+        3Ua   3Ua   3Ua   3Ua
     */
     val waiter = new Waiter
     val counter = new AtomicInteger(0)
@@ -217,7 +217,7 @@ class ConsensusTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(4L, udi, insert.record.fingerprint, net.quorum.uid, pa1.body as Propose, voteReplies)
+            val ua1 = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
             for (sendTo : 1 .. 3)
               net.send(sendTo, ua1)
             voteReplies.clear
@@ -247,7 +247,7 @@ class ConsensusTest {
         val rVote = reply.body as Reply
         voteReplies.put(rVote.party, reply)
         if (voteReplies.size == 3) {
-          val ua2 = Update.create(6L, udi, insert.record.fingerprint, net.quorum.uid, pa3.body as Propose, voteReplies)
+          val ua2 = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies)
           for (sendTo : 1 .. 4)
             net.send(sendTo, ua2)
           voteReplies.clear
@@ -260,7 +260,7 @@ class ConsensusTest {
       }
       
       if (reply.id == 6L && #[4].contains(party)) {
-        waiter.assertNoData(reply)
+        waiter.assertAck(reply)
         counter.incrementAndGet
       }
       

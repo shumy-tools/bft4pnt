@@ -1,56 +1,33 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
-import io.netty.buffer.PooledByteBufAllocator
 import java.security.PublicKey
 import java.util.ArrayList
 import java.util.List
-import pt.ieeta.bft4pnt.crypto.HashHelper
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
 class Quorum implements ISection {
-  public val String uid
   public val int t
   val List<PublicKey> parties
   
   def getN() { parties.size }
   
-  new(String uid, int t, List<PublicKey> parties) {
-    this.t = t
-    this.parties = parties
-    this.uid = uid
-    verify
-  }
-  
   new(int t, List<PublicKey> parties) {
     this.t = t
     this.parties = parties
-    this.uid = genUID
-    verify
+    
+    if (n < 2*t + 1)
+      throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
   }
+
   
   def getPartyKey(int party) {
-    if (party >= parties.size)
+    if (party > parties.size)
       return null
     parties.get(party - 1)
   }
   
-  private def verify() {
-    if (n < 2*t + 1)
-      throw new RuntimeException("Invalid quorum configuration")
-  }
-  
-  private def String genUID() {
-    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
-    write(buf)
-    
-    val data = newByteArrayOfSize(buf.readableBytes)
-    buf.readBytes(data)
-    HashHelper.digest(data)
-  }
-  
   override write(ByteBuf buf) {
-    Message.writeString(buf, uid)
     buf.writeInt(t)
     
     buf.writeInt(parties.size)
@@ -59,7 +36,6 @@ class Quorum implements ISection {
   }
   
   static def Quorum read(ByteBuf buf) {
-    val uid = Message.readString(buf)
     val t = buf.readInt
     
     val number = buf.readInt
@@ -70,6 +46,6 @@ class Quorum implements ISection {
       parties.add(key)
     }
     
-    return new Quorum(uid, t, parties)
+    return new Quorum(t, parties)
   }
 }

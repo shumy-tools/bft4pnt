@@ -10,11 +10,11 @@ class Reply implements ISection {
   
   public val Type type
   public val Integer party
+  public val Integer quorum
   
-  public val String quorum
   public val Propose propose
   
-  static def Reply vote(Integer party, String quorum, Propose propose) {
+  static def Reply vote(Integer party, Integer quorum, Propose propose) {
     return new Reply(Type.VOTE, party, quorum, propose)
   }
   
@@ -35,7 +35,7 @@ class Reply implements ISection {
     buf.writeInt(party)
     
     if (type === Type.VOTE) {
-      Message.writeString(buf, quorum)
+      buf.writeInt(quorum)
       propose.write(buf)
     }
   }
@@ -46,7 +46,7 @@ class Reply implements ISection {
     
     val type = Type.values.get(typeIndex)
     if (type === Type.VOTE) {
-      val quorum = Message.readString(buf)
+      val quorum = buf.readInt
       val propose = Propose.read(buf)
       return new Reply(type, party, quorum, propose)
     }

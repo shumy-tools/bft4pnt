@@ -1,8 +1,9 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
-import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.HashHelper
 
 @FinalFieldsConstructor
@@ -27,14 +28,36 @@ class Insert implements ISection {
     return new Insert(type, slices)
   }
   
+  static def Message create(long msgId, String udi, String type, ISection section) {
+    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
+    try {
+      buf.retain
+      section.write(buf)
+      
+      val block = newByteArrayOfSize(buf.readableBytes)
+      buf.getBytes(buf.readerIndex, block)
+      buf.release
+      
+      return create(udi, type, HashHelper.digest(block)) => [
+        id = msgId
+        data = new Data(Data.Type.SECTION, block)
+      ]
+    } finally {
+      buf.release
+    }
+  }
+  
   static def Message create(long msgId, String udi, String type, String data) {
     val block = data.getBytes(StandardCharsets.UTF_8)
-    val record = new Record(udi, HashHelper.digest(block))
-    val body = new Insert(type)
-    
-    return new Message(record, body) => [
+    return create(udi, type, HashHelper.digest(block)) => [
       id = msgId
-      data = block
+      data = new Data(Data.Type.STRING, block)
     ]
+  }
+  
+  private static def create(String udi, String type, String rec) {
+    val record = new Record(udi, rec)
+    val body = new Insert(type)
+    return new Message(record, body)
   }
 }

@@ -8,36 +8,62 @@ import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
+import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Get
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Quorum
+import pt.ieeta.bft4pnt.msg.Record
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
-import pt.ieeta.bft4pnt.spi.IClientStore
-import pt.ieeta.bft4pnt.spi.IDataStore
 import pt.ieeta.bft4pnt.spi.IExtension
+import pt.ieeta.bft4pnt.spi.IRecord
 import pt.ieeta.bft4pnt.spi.IStore
+import pt.ieeta.bft4pnt.spi.IStoreManager
 
-@FinalFieldsConstructor
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
   
-  val String qRec // the quorum record
+  var IRecord quorum
   val Integer party
   
   val MessageBroker broker
-  val IStore store
+  val IStoreManager storeMng
   
   val (Message)=>boolean authorizer // authorize client?
   
+  public val Replicator replicator
   public val extensions = new HashMap<String, IExtension>
   
   // these values do not require persistence.
   // <UDI-F-Ik-Dk>
   val counts = new HashMap<String, Set<Integer>>
+  
+  new(Integer party, MessageBroker broker, IStoreManager storeMng, (Message)=>boolean authorizer) {
+    this.party = party
+    this.broker = broker
+    this.storeMng = storeMng
+    this.authorizer = authorizer
+    this.replicator = new Replicator(this)
+    
+    val localStore = storeMng.local
+    val qAlias = storeMng.alias("quorum")
+    this.quorum = localStore.getRecord(qAlias)
+  }
+  
+  private def Quorum getLastQuorum() {
+    getQuorumAt(quorum.lastIndex)
+  }
+  
+  private def Quorum getQuorumAt(int index) {
+    println("GET quorum at " + index)
+    val qMsg = quorum.getCommit(index)
+    println("RES " + qMsg)
+    
+    qMsg.data.get[Quorum.read(it)]
+  }
   
   private def int countReplicas(Message msg, Update update) {
     val key = '''«msg.record.udi»-«msg.record.fingerprint»-«update.propose.index»-«update.propose.fingerprint»'''
@@ -59,17 +85,24 @@ class PNTServer {
   def void start() {
     broker.start([
       logger.info("PNT-READY {} on {}", '''«hostString»:«port»''')
+      replicator.start
     ], [ inetSource, msg |
+      // clients do not send replies or errors
+      if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
+        replicator.reply(msg)
+        return;
+      }
+      
+      // is the message authorized?
       if (!authorizer.apply(msg)) {
-        val reply = new Message(msg.record, Error.unauthorized("Non authorized UDI!")) => [
-          id = msg.id
-        ]
+        val reply = new Message(msg.record, Error.unauthorized("Non authorized UDI!"))
+        reply.id =  msg.id
         
         broker.send(inetSource, reply)
         return;
       }
       
-      val cs = store.getOrCreate(msg.record.udi)
+      val cs = storeMng.getOrCreate(msg.record.udi)
       synchronized(cs) {
         handle(cs, msg, msg.body)[ reply |
           reply.id = msg.id
@@ -79,7 +112,7 @@ class PNTServer {
     ])
   }
   
-  dispatch private def void handle(IClientStore cs, Message msg, Insert body, (Message)=>void reply) {
+  dispatch private def void handle(IStore cs, Message msg, Insert body, (Message)=>void reply) {
     val ext = extensions.get(body.type)
     val error = ext?.checkInsert(cs, msg, body)
     if (error !== null) {
@@ -88,17 +121,13 @@ class PNTServer {
       return;
     }
     
-    // is data directly in the message?
-    if (msg.data !== null)
-      cs.data.store(msg.record.fingerprint, msg.data)
-    
-    val has = cs.data.has(msg.record.fingerprint)
+    val has = msg.data.has(msg.record.fingerprint)
     switch has {
-      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
-      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
-      case IDataStore.Status.YES: {
+      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
+      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
+      case Data.Status.YES: {
         // verify fingerprints
-        if (!cs.data.verify(msg.record.fingerprint, body.slices)) {
+        if (!msg.data.verify(msg.record.fingerprint, body.slices)) {
           reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
           return;
         }
@@ -107,12 +136,13 @@ class PNTServer {
         if (ext === null || ext.insert(cs, msg))
           cs.insert(msg)
         
+        replicator.ready(msg.record)
         reply.apply(new Message(msg.record, Reply.ack(party)))
       }
     }
   }
   
-  dispatch private def void handle(IClientStore cs, Message msg, Propose body, (Message)=>void reply) {
+  dispatch private def void handle(IStore cs, Message msg, Propose body, (Message)=>void reply) {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
@@ -121,16 +151,8 @@ class PNTServer {
       return;
     }
     
-    val ext = extensions.get(record.type)
-    val error = ext?.checkPropose(cs, msg, body)
-    if (error !== null) {
-      logger.error("Extension constraint error (msg={})", error)
-      reply.apply(new Message(msg.record, Error.constraint(error)))
-      return;
-    }
-    
     // Parties only accept proposals if messages for all past fingerprints exist.
-    if (body.index > record.lastCommit + 1) {
+    if (body.index > record.lastIndex + 1) {
       logger.error("Non existent past commits (index={}, last={})", body.index, record.lastCommit)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent past commits!")))
       return;
@@ -156,34 +178,12 @@ class PNTServer {
       }
     }
     
-    // is data directly in the message?
-    if (msg.data !== null)
-      cs.data.store(body.fingerprint, msg.data)
-    
-    // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
-    val has = cs.data.has(body.fingerprint)
-    switch has {
-      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
-      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
-      case IDataStore.Status.YES: {
-        val quorum = store.get(Quorum, qRec)
-        val vote = new Message(msg.record, Reply.vote(party, quorum.uid, body))
-        record.vote = vote
-        reply.apply(vote)
-      }
-    }
+    val vote = new Message(msg.record, Reply.vote(party, quorum.lastIndex, body))
+    record.vote = vote
+    reply.apply(vote)
   }
   
-  dispatch private def void handle(IClientStore cs, Message msg, Update body, (Message)=>void reply) {
-    val quorum = store.get(Quorum, body.quorum)
-    if (quorum === null) {
-      logger.error("Non existent quorum (rec={})", body.quorum)
-      reply.apply(new Message(msg.record, Error.unauthorized("Non existent quorum!")))
-      return;
-    }
-    
-    val nMt = quorum.n - quorum.t
-    
+  dispatch private def void handle(IStore cs, Message msg, Update body, (Message)=>void reply) {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
@@ -191,6 +191,23 @@ class PNTServer {
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
+    
+    val ext = extensions.get(record.type)
+    val error = ext?.checkUpdate(cs, msg, body)
+    if (error !== null) {
+      logger.error("Extension constraint error (msg={})", error)
+      reply.apply(new Message(msg.record, Error.constraint(error)))
+      return;
+    }
+    
+    val quorum = getQuorumAt(body.quorum)
+    if (quorum === null) {
+      logger.error("Non existent quorum (rec={})", body.quorum)
+      reply.apply(new Message(msg.record, Error.unauthorized("Non existent quorum!")))
+      return;
+    }
+    
+    val nMt = quorum.n - quorum.t
     
     // Conflicting commits can only be overridden by other commits of higher rounds.
     val update = record.getCommit(body.propose.index)
@@ -258,29 +275,29 @@ class PNTServer {
     }
     
     // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
-    val has = cs.data.has(body.propose.fingerprint)
+    val has = msg.data.has(body.propose.fingerprint)
     switch has {
-      case IDataStore.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
-      case IDataStore.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
-      case IDataStore.Status.YES: {
+      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
+      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
+      case Data.Status.YES: {
         // verify fingerprints
-        if (!cs.data.verify(body.propose.fingerprint, body.slices)) {
+        if (!msg.data.verify(body.propose.fingerprint, body.slices)) {
           reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
           return;
         }
         
         //execute update extension
-        val ext = extensions.get(record.type)
         if (ext === null || ext.update(cs, msg))
           record.update(msg)
         
         clearReplicas(msg, body)
+        replicator.ready(msg.record)
         reply.apply(new Message(msg.record, Reply.ack(party)))
       }
     }
   }
   
-  dispatch private def void handle(IClientStore cs, Message msg, Get body, (Message)=>void reply) {
+  dispatch private def void handle(IStore cs, Message msg, Get body, (Message)=>void reply) {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
@@ -289,8 +306,7 @@ class PNTServer {
       return;
     }
     
-    val index = if (body.index === -1) record.lastCommit else body.index
-    val commit = record.getCommit(index)
+    val commit = record.getCommit(body.index)
     if (commit === null) {
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
@@ -298,12 +314,35 @@ class PNTServer {
     
     reply.apply(commit)
   }
+}
+
+@FinalFieldsConstructor
+class Replicator {
+  val PNTServer srv
+  var Thread job = null 
   
-  dispatch private def void handle(IClientStore cs, Message msg, Reply body, (Message)=>void reply) {
+  def isActive() { job !== null }
+  
+  def void start() {
+    job = new Thread[
+      
+    ]
     
+    job.start
   }
   
-  dispatch private def void handle(IClientStore cs, Message msg, Error body, (Message)=>void reply) {
-    
+  def void stop() {
+    if (job !== null) {
+      job.interrupt
+      job = null
+    }
+  }
+  
+  // signal the record as ready for replication
+  def void ready(Record record) {
+  }
+  
+  def void reply(Message msg) {
+    //TODO: verify if is part of the quorum?
   }
 }

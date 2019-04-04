@@ -9,6 +9,7 @@ import java.util.HashMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
+import org.eclipse.xtend.lib.annotations.Accessors
 
 @FinalFieldsConstructor
 class Replica implements ISection {
@@ -46,12 +47,19 @@ class Message {
   val replicas = new HashMap<Integer, Replica>
   val rParties = new HashMap<Integer, PrivateKey>
   
-  // optional data
-  public var byte[] data = null
+  // data for (insert, update)
+  @Accessors(PUBLIC_GETTER) var Data data = null
   
   def getSource() { signature.source }
   def getSignature() { signature.signature }
   def getReplicaParties() { replicas.keySet }
+  
+  def setData(Data data) {
+    if (type !== Type.INSERT && type !== Type.UPDATE)
+      throw new RuntimeException("Only (insert, update) messages have data!")
+    
+    this.data = data
+  }
   
   def verifyReplicas(Quorum quorum) {
     for (party : replicas.keySet) {
@@ -103,31 +111,43 @@ class Message {
   }
   
   def ByteBuf write(KeyPair keys) {
-    PooledByteBufAllocator.DEFAULT.buffer(1024) => [
-      this.write(it)
-      val block = signedBlock
+    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
+    try {
+      buf.retain
+      write(buf)
+      val block = buf.signedBlock
       
       signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
-      signature.write(it)
+      signature.write(buf)
       
       if (type === Type.UPDATE) {
-        writeInt(replicas.size)
+        buf.writeInt(replicas.size)
         for (party : rParties.keySet) {
           val rSig = SignatureHelper.sign(rParties.get(party), block)
           val replica = new Replica(block, party, rSig)
           replicas.put(party, replica)
-          replica.write(it)
+          replica.write(buf)
         }
       }
       
-      writeBytes(it, data)
-    ]
+      if (type === Type.INSERT || type === Type.UPDATE)
+        data.write(buf)
+      
+      return buf
+    } finally {
+      buf.release
+    }
   }
   
   def ByteBuf write() {
-    PooledByteBufAllocator.DEFAULT.buffer(1024) => [
-      this.write(it)
-    ]
+    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
+    try {
+      buf.retain
+      write(buf)
+      return buf
+    } finally {
+      buf.release
+    }
   }
   
   static def ReadResult read(ByteBuf buf) {
@@ -173,10 +193,11 @@ class Message {
         }
       }
       
-      val data = readBytes(buf)
-      if (data !== null)
-        less += data.length
-      less += 4
+      val data = if (type === Type.INSERT || type === Type.UPDATE) {
+        val data = Data.read(buf)
+        less += 6 + data.size
+        data
+      }
       
       // Verify the correctness of the source digital signature
       if (!signature.verify(block.remove(less)))

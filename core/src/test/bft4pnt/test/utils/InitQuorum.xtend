@@ -36,10 +36,10 @@ class InitQuorum {
     val quorum = new Quorum(t, parties.map[public])
     for (i : 0 ..< n) {
       val broker = new MessageBroker(inets.get(i), parties.get(i))
-      val store = new MemoryStore(quorum)
+      val storeMng = new MemoryStoreManager(quorum)
       val (Message)=>boolean authorizer = [ true ]
       
-      val pnt = new PNTServer(quorum.uid, i + 1, broker, store, authorizer)
+      val pnt = new PNTServer(i + 1, broker, storeMng, authorizer)
       pnt.start
       
       while (!pnt.ready)

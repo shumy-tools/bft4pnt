@@ -3,8 +3,8 @@ package pt.ieeta.bft4pnt.msg
 import io.netty.buffer.ByteBuf
 import java.util.ArrayList
 import java.util.List
-import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import java.util.Map
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 
 @FinalFieldsConstructor
 class Vote implements ISection {
@@ -26,13 +26,13 @@ class Vote implements ISection {
 
 @FinalFieldsConstructor
 class Update implements ISection {
-  public val String quorum
+  public val Integer quorum
   public val Propose propose
   
   public val List<Vote> votes
   public val Slices slices
   
-  new(String quorum, Propose propose, List<Vote> votes) {
+  new(Integer quorum, Propose propose, List<Vote> votes) {
     this.quorum = quorum
     this.propose = propose
     
@@ -41,7 +41,7 @@ class Update implements ISection {
   }
   
   override write(ByteBuf buf) {
-    Message.writeString(buf, quorum)
+    buf.writeInt(quorum)
     propose.write(buf)
     
     buf.writeInt(votes.size)
@@ -52,7 +52,7 @@ class Update implements ISection {
   }
   
   static def Update read(ByteBuf buf) {
-    val quorum = Message.readString(buf)
+    val quorum = buf.readInt
     val propose = Propose.read(buf)
     
     val number = buf.readInt
@@ -66,8 +66,8 @@ class Update implements ISection {
     
     return new Update(quorum, propose, votes, slices)
   }
-  
-  static def Message create(long msgId, String udi, String rec, String quorum, Propose propose, Map<Integer, Message> voteReplies) {
+   
+  static def create(long msgId, String udi, String rec, Integer quorum, Propose propose, Map<Integer, Message> voteReplies) {
     val votes = new ArrayList<Vote>
     for (party : voteReplies.keySet) {
       val msgReply = voteReplies.get(party)
@@ -88,6 +88,7 @@ class Update implements ISection {
     
     return new Message(record, body) => [
       id = msgId
+      data = new Data(propose.type, propose.data)
     ]
   }
 }
