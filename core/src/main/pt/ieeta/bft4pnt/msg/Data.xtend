@@ -14,6 +14,8 @@ class Data implements ISection {
   val Object obj
   val String secType
   
+  var String fingerprint = null
+  
   new(byte[] value) { this(Type.RAW, value, null) }
   new(String value) { this(Type.STRING, value, null) }
   new(ISection value) { this(Type.SECTION, value, value.class.name) }
@@ -40,17 +42,20 @@ class Data implements ISection {
   }
   
   def fingerprint() {
-    switch type {
+    if (fingerprint !== null)
+      return fingerprint
+    
+    this.fingerprint = switch type {
       case RAW: DigestHelper.digest(obj as byte[])
       case STRING: DigestHelper.digest(obj as String)
       case SECTION: DigestHelper.digest(obj as ISection)
     }
   }
   
-  def verify(String key, Slices slices) {
+  /*def verify(String key, Slices slices) {
     //TODO: verify slices?
     return true
-  }
+  }*/
   
   override write(ByteBuf buf) {
     buf.writeShort(type.ordinal)

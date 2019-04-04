@@ -13,21 +13,36 @@ class Reply implements ISection {
   public val Integer quorum
   
   public val Propose propose
+  public val String fingerprint
   
   static def Reply vote(Integer party, Integer quorum, Propose propose) {
-    return new Reply(Type.VOTE, party, quorum, propose)
+    return new Reply(Type.VOTE, party, quorum, propose, null)
   }
   
   static def Reply noData(Integer party) {
-    return new Reply(Type.NO_DATA, party, null, null)
+    return new Reply(Type.NO_DATA, party, null, null, null)
   }
+  
+  static def Reply noData(Integer party, String fingerprint) {
+    return new Reply(Type.NO_DATA, party, null, null, fingerprint)
+  }
+  
   
   static def Reply receiving(Integer party) {
-    return new Reply(Type.RECEIVING, party, null, null)
+    return new Reply(Type.RECEIVING, party, null, null, null)
+  }
+    
+  static def Reply receiving(Integer party, String fingerprint) {
+    return new Reply(Type.RECEIVING, party, null, null, fingerprint)
   }
   
+  
   static def Reply ack(Integer party) {
-    return new Reply(Type.ACK, party, null, null)
+    return new Reply(Type.ACK, party, null, null, null)
+  }
+  
+  static def Reply ack(Integer party, String fingerprint) {
+    return new Reply(Type.ACK, party, null, null, fingerprint)
   }
   
   override write(ByteBuf buf) {
@@ -37,6 +52,8 @@ class Reply implements ISection {
     if (type === Type.VOTE) {
       buf.writeInt(quorum)
       propose.write(buf)
+    } else {
+      Message.writeString(buf, fingerprint)
     }
   }
   
@@ -45,12 +62,13 @@ class Reply implements ISection {
     val party = buf.readInt
     
     val type = Type.values.get(typeIndex)
-    if (type === Type.VOTE) {
+    return if (type === Type.VOTE) {
       val quorum = buf.readInt
       val propose = Propose.read(buf)
-      return new Reply(type, party, quorum, propose)
+      new Reply(type, party, quorum, propose, null)
+    } else {
+      val fingerprint = Message.readString(buf)
+      new Reply(type, party, null, null, fingerprint)
     }
-    
-    return new Reply(type, party, null, null)
   }
 }

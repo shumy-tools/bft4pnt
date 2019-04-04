@@ -1,8 +1,10 @@
 package pt.ieeta.bft4pnt
 
+import java.security.KeyPair
 import java.util.HashMap
 import java.util.HashSet
 import java.util.Set
+import java.util.concurrent.ConcurrentHashMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
@@ -15,7 +17,6 @@ import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Quorum
-import pt.ieeta.bft4pnt.msg.Record
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IExtension
@@ -26,11 +27,12 @@ import pt.ieeta.bft4pnt.spi.IStoreManager
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
   
-  var IRecord quorum
-  val Integer party
+  package var IRecord quorum
+  package val Integer party
+  package val KeyPair keys
   
-  val MessageBroker broker
-  val IStoreManager storeMng
+  package val MessageBroker broker
+  package val IStoreManager storeMng
   
   val (Message)=>boolean authorizer // authorize client?
   
@@ -41,8 +43,9 @@ class PNTServer {
   // <UDI-F-Ik-Dk>
   val counts = new HashMap<String, Set<Integer>>
   
-  new(Integer party, MessageBroker broker, IStoreManager storeMng, (Message)=>boolean authorizer) {
+  new(Integer party, KeyPair keys, MessageBroker broker, IStoreManager storeMng, (Message)=>boolean authorizer) {
     this.party = party
+    this.keys = keys
     this.broker = broker
     this.storeMng = storeMng
     this.authorizer = authorizer
@@ -53,7 +56,7 @@ class PNTServer {
     this.quorum = localStore.getRecord(qAlias)
   }
   
-  private def Quorum getQuorumAt(int index) {
+  package def Quorum getQuorumAt(int index) {
     val qMsg = quorum.getCommit(index)
     qMsg.data.get(Quorum)
   }
@@ -78,11 +81,13 @@ class PNTServer {
   def void start() {
     broker.start([
       logger.info("PNT-READY {} on {}", '''«hostString»:«port»''')
-      replicator.start
     ], [ inetSource, msg |
+      //TODO: verify if is part of the quorum?
+      
       // clients do not send replies or errors
       if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
-        replicator.reply(msg)
+        if (replicator.active)
+          replicator.reply(msg)
         return;
       }
       
@@ -119,17 +124,20 @@ class PNTServer {
       case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
       case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
       case Data.Status.YES: {
-        // verify fingerprints
-        if (!msg.data.verify(msg.record.fingerprint, body.slices)) {
-          reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
+        // verify record fingerprint
+        if (msg.record.fingerprint != msg.data.fingerprint) {
+          logger.error("Invalid record fingerprint (msg={}, data={})", msg.record.fingerprint, msg.data.fingerprint)
+          reply.apply(new Message(msg.record, Error.invalid("Invalid record fingerprint!")))
           return;
         }
+        
+        //TODO: verify slices?
         
         //execute insert extension
         if (ext === null || ext.insert(cs, msg))
           cs.insert(msg)
         
-        replicator.ready(msg.record)
+        replicator.ready(msg)
         reply.apply(new Message(msg.record, Reply.ack(party)))
       }
     }
@@ -139,7 +147,7 @@ class PNTServer {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
-      logger.error("Non existent record (rec={})", msg.record.fingerprint)
+      logger.error("Non existent record (propose, rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
@@ -180,7 +188,7 @@ class PNTServer {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
-      logger.error("Non existent record (rec={})", msg.record.fingerprint)
+      logger.error("Non existent record (update, rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
@@ -270,22 +278,25 @@ class PNTServer {
     // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
     val has = msg.data.has(body.propose.fingerprint)
     switch has {
-      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
-      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party)))
+      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party, body.propose.fingerprint)))
+      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(party, body.propose.fingerprint)))
       case Data.Status.YES: {
-        // verify fingerprints
-        if (!msg.data.verify(body.propose.fingerprint, body.slices)) {
-          reply.apply(new Message(msg.record, Error.invalid("Invalid fingerprints!")))
+        // verify update fingerprint
+        if (body.propose.fingerprint != msg.data.fingerprint) {
+          logger.error("Invalid update fingerprint (msg={}, data={})", body.propose.fingerprint, msg.data.fingerprint)
+          reply.apply(new Message(msg.record, Error.invalid("Invalid update fingerprint!")))
           return;
         }
+        
+        //TODO: verify slices?
         
         //execute update extension
         if (ext === null || ext.update(cs, msg))
           record.update(msg)
         
         clearReplicas(msg, body)
-        replicator.ready(msg.record)
-        reply.apply(new Message(msg.record, Reply.ack(party)))
+        replicator.ready(msg)
+        reply.apply(new Message(msg.record, Reply.ack(party, body.propose.fingerprint)))
       }
     }
   }
@@ -294,7 +305,7 @@ class PNTServer {
     // Record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
-      logger.error("Non existent record (rec={})", msg.record.fingerprint)
+      logger.error("Non existent record (get, rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
       return;
     }
@@ -310,15 +321,29 @@ class PNTServer {
 }
 
 @FinalFieldsConstructor
+class RepEntry {
+  public val Message msg
+  public val done = new HashSet<String> // public keys
+}
+
+@FinalFieldsConstructor
 class Replicator {
+  static val logger = LoggerFactory.getLogger(Replicator.simpleName)
+  
   val PNTServer srv
-  var Thread job = null 
+  
+  //TODO: move to persistent storage
+  val repTable = new ConcurrentHashMap<String, RepEntry>
+  var Thread job = null
   
   def isActive() { job !== null }
   
   def void start() {
     job = new Thread[
+      for (entry : repTable.values)
+        entry.replicate
       
+      Thread.sleep(1000)
     ]
     
     job.start
@@ -331,11 +356,37 @@ class Replicator {
     }
   }
   
-  // signal the record as ready for replication
-  def void ready(Record record) {
+  // signal the (insert, update) as ready for replication
+  def void ready(Message msg) {
+    msg.setReplica(srv.party, srv.keys.private)
+    val key = '''«msg.record.udi»-«msg.record.fingerprint»«IF msg.type === Message.Type.UPDATE»-«(msg.body as Update).propose.fingerprint»«ENDIF»'''
+    repTable.put(key, new RepEntry(msg))
   }
   
   def void reply(Message msg) {
-    //TODO: verify if is part of the quorum?
+    if (msg.type !== Message.Type.REPLY) {
+      logger.error("Replication error: {}", msg)
+      return;
+    }
+    
+    val reply = (msg.body as Reply)
+    val key = '''«msg.record.udi»-«msg.record.fingerprint»«IF reply.fingerprint !== null»-«reply.fingerprint»«ENDIF»'''
+    
+    val entry = repTable.get(key)
+    if (entry !== null) {
+      val target = KeyPairHelper.encode(msg.source)
+      entry.done.add(target)
+    }
+  }
+  
+  private def void replicate(RepEntry entry) {
+    val quorum = srv.getQuorumAt(srv.quorum.lastIndex)
+    for (n : 0 ..< quorum.n) {
+      val target = KeyPairHelper.encode(quorum.parties.get(n))
+      if (!entry.done.contains(target)) {
+        val inet = quorum.addresses.get(n)
+        srv.broker.send(inet, entry.msg)
+      }
+    }
   }
 }

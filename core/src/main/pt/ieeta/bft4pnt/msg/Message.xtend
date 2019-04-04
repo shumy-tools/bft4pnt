@@ -45,7 +45,7 @@ class Message {
   
   var Signature signature
   val replicas = new HashMap<Integer, Replica>
-  val rParties = new HashMap<Integer, PrivateKey>
+  val newReplicas = new HashMap<Integer, PrivateKey>
   
   // data for (insert, update)
   @Accessors(PUBLIC_GETTER) var Data data = null
@@ -98,7 +98,7 @@ class Message {
   }
   
   def setReplica(int party, PrivateKey key) {
-    rParties.put(party, key)
+    newReplicas.put(party, key)
   }
   
   private def void write(ByteBuf buf) {
@@ -121,13 +121,17 @@ class Message {
       signature.write(buf)
       
       if (type === Type.UPDATE) {
-        buf.writeInt(replicas.size)
-        for (party : rParties.keySet) {
-          val rSig = SignatureHelper.sign(rParties.get(party), block)
+        // add or override new replicas
+        for (party : newReplicas.keySet) {
+          val rSig = SignatureHelper.sign(newReplicas.get(party), block)
           val replica = new Replica(block, party, rSig)
           replicas.put(party, replica)
-          replica.write(buf)
         }
+        
+        newReplicas.clear
+        buf.writeInt(replicas.size)
+        for (rep : replicas.values)
+          rep.write(buf)
       }
       
       if (type === Type.INSERT || type === Type.UPDATE)
@@ -179,24 +183,25 @@ class Message {
       // block signature ends here. Count the remaining bytes to remove.
       var less = 0
       
-      val signature = Signature.read(buf)
-      less += 8 + signature.source.encoded.length + signature.signature.length
+      val b1 = buf.readableBytes
+        val signature = Signature.read(buf)
+      less += (b1 - buf.readableBytes)
       
       val replicas = new HashMap<Integer, Replica>
       if (type === Type.UPDATE) {
-        val number = buf.readInt
-        less += 4
+        val number = buf.readInt; less += 4
         for (n : 0 ..< number) {
-          val rep = Replica.read(buf, block)
-          less += 4 + rep.signature.length
+          val b2 = buf.readableBytes
+            val rep = Replica.read(buf, block)
+          less += (b2 - buf.readableBytes)
           replicas.put(rep.party, rep)
         }
       }
       
       val data = if (type === Type.INSERT || type === Type.UPDATE) {
-        val before = buf.readableBytes
-        val data = Data.read(buf)
-        less += (before - buf.readableBytes)
+        val b3 = buf.readableBytes
+          val data = Data.read(buf)
+        less += (b3 - buf.readableBytes)
         data
       }
       

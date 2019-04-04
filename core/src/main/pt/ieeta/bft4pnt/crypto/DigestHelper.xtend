@@ -7,14 +7,14 @@ import org.bouncycastle.util.encoders.Base64
 import pt.ieeta.bft4pnt.msg.ISection
 
 class DigestHelper {
-  static val inst = MessageDigest.getInstance("SHA-256")
   
   static def String digest(byte[] value) {
+    val inst = MessageDigest.getInstance("SHA-256")
     return new String(Base64.encode(inst.digest(value)), StandardCharsets.UTF_8)
   }
   
   static def String digest(String value) {
-    digest(value.getBytes(StandardCharsets.UTF_8))
+    return digest(value.getBytes(StandardCharsets.UTF_8))
   }
   
   static def String digest(ISection value) {
