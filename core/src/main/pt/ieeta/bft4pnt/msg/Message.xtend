@@ -194,8 +194,9 @@ class Message {
       }
       
       val data = if (type === Type.INSERT || type === Type.UPDATE) {
+        val before = buf.readableBytes
         val data = Data.read(buf)
-        less += 6 + data.size
+        less += (before - buf.readableBytes)
         data
       }
       

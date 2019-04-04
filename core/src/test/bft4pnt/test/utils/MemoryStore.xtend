@@ -4,6 +4,7 @@ import java.util.ArrayList
 import java.util.HashMap
 import java.util.concurrent.ConcurrentHashMap
 import org.eclipse.xtend.lib.annotations.Accessors
+import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
@@ -17,7 +18,7 @@ class MemoryStoreManager implements IStoreManager {
   val clients = new ConcurrentHashMap<String, IStore>
   
   new(Quorum quorum) {
-    val msg = Insert.create(0L, "local", "quorum", quorum)
+    val msg = Insert.create(0L, "local", "quorum", new Data(quorum))
     alias.put("quorum" , msg.record.fingerprint)
     local.insert(msg)
   }

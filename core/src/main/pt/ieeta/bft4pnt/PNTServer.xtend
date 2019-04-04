@@ -53,16 +53,9 @@ class PNTServer {
     this.quorum = localStore.getRecord(qAlias)
   }
   
-  private def Quorum getLastQuorum() {
-    getQuorumAt(quorum.lastIndex)
-  }
-  
   private def Quorum getQuorumAt(int index) {
-    println("GET quorum at " + index)
     val qMsg = quorum.getCommit(index)
-    println("RES " + qMsg)
-    
-    qMsg.data.get[Quorum.read(it)]
+    qMsg.data.get(Quorum)
   }
   
   private def int countReplicas(Message msg, Update update) {

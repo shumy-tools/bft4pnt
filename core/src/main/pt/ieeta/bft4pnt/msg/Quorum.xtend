@@ -19,7 +19,6 @@ class Quorum implements ISection {
     if (n < 2*t + 1)
       throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
   }
-
   
   def getPartyKey(int party) {
     if (party > parties.size)

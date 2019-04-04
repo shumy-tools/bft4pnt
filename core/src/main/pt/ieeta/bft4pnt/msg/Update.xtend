@@ -67,7 +67,7 @@ class Update implements ISection {
     return new Update(quorum, propose, votes, slices)
   }
    
-  static def create(long msgId, String udi, String rec, Integer quorum, Propose propose, Map<Integer, Message> voteReplies) {
+  static def create(long msgId, String udi, String rec, Integer quorum, Propose propose, Map<Integer, Message> voteReplies, Data block) {
     val votes = new ArrayList<Vote>
     for (party : voteReplies.keySet) {
       val msgReply = voteReplies.get(party)
@@ -88,7 +88,7 @@ class Update implements ISection {
     
     return new Message(record, body) => [
       id = msgId
-      data = new Data(propose.type, propose.data)
+      data = block
     ]
   }
 }

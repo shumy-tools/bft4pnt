@@ -11,6 +11,7 @@ import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
 import bft4pnt.test.utils.InitQuorum
+import pt.ieeta.bft4pnt.msg.Data
 
 class ConsensusTest {
   def void assertError(Waiter waiter, Message reply, String msg) {
@@ -56,8 +57,10 @@ class ConsensusTest {
     val net  = InitQuorum.init(3000, 4, 1)
     
     val udi = "udi-1"
-    val insert = Insert.create(1L, udi, "test", "data-i")
-    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, "a", 1, 2L)
+    val d1 = new Data("d1")
+    
+    val insert = Insert.create(1L, udi, "test", new Data("data-i"))
+    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 2L)
     
     val voteReplies = new HashMap<Integer, Message>
     net.start[ party, reply |
@@ -71,7 +74,7 @@ class ConsensusTest {
         voteReplies.put(rVote.party, reply)
         
         if (voteReplies.size == 2) {
-          val u1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
+          val u1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
           net.send(party, u1)
         }
         
@@ -80,7 +83,7 @@ class ConsensusTest {
           val p2 = Propose.create(4L, udi, insert.record.fingerprint, "data-3", 1, 1L)
           net.send(party, p2)
           
-          val u2 = Update.create(5L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
+          val u2 = Update.create(5L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
           net.send(party, u2)
         }
       }
@@ -123,9 +126,12 @@ class ConsensusTest {
     val net  = InitQuorum.init(3005, 4, 1)
     
     val udi = "udi-1"
-    val insert = Insert.create(1L, udi, "test", "data-i")
-    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, "a", 1, 1L)
-    val pb2 = Propose.create(4L, udi, insert.record.fingerprint, "b", 1, 2L)
+    val d1 = new Data("d1")
+    val d2 = new Data("d2")
+    
+    val insert = Insert.create(1L, udi, "test", new Data("data-i"))
+    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
+    val pb2 = Propose.create(4L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
     
     val voteReplies = new HashMap<Integer, Message>
     net.start[ party, reply |
@@ -142,7 +148,7 @@ class ConsensusTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
+            val ua1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
             for (sendTo : 1 .. 3)
               net.send(sendTo, ua1)
             voteReplies.clear
@@ -197,10 +203,13 @@ class ConsensusTest {
     val net  = InitQuorum.init(3010, 4, 1)
     
     val udi = "udi-1"
-    val insert = Insert.create(1L, udi, "test", "data-i")
-    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, "a", 1, 1L)
-    val pb2 = Propose.create(3L, udi, insert.record.fingerprint, "b", 1, 2L)
-    val pa3 = Propose.create(5L, udi, insert.record.fingerprint, "a", 1, 3L)
+    val d1 = new Data("d1")
+    val d2 = new Data("d2")
+    
+    val insert = Insert.create(1L, udi, "test", new Data("data-i"))
+    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
+    val pb2 = Propose.create(3L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
+    val pa3 = Propose.create(5L, udi, insert.record.fingerprint, d1.fingerprint, 1, 3L)
     
     val voteReplies = new HashMap<Integer, Message>
     net.start[ party, reply |
@@ -217,7 +226,7 @@ class ConsensusTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies)
+            val ua1 = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
             for (sendTo : 1 .. 3)
               net.send(sendTo, ua1)
             voteReplies.clear
@@ -247,7 +256,7 @@ class ConsensusTest {
         val rVote = reply.body as Reply
         voteReplies.put(rVote.party, reply)
         if (voteReplies.size == 3) {
-          val ua2 = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies)
+          val ua2 = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies, d1)
           for (sendTo : 1 .. 4)
             net.send(sendTo, ua2)
           voteReplies.clear

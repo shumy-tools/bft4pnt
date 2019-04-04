@@ -1,83 +1,92 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
-import io.netty.buffer.PooledByteBufAllocator
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import org.bouncycastle.util.encoders.Base64
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import pt.ieeta.bft4pnt.crypto.DigestHelper
 
+@FinalFieldsConstructor
 class Data implements ISection {
-  enum Type { RAW, SECTION, STRING }
+  enum Type { RAW, STRING, SECTION }
   enum Status { YES, NO, PENDING }
   
   public val Type type
-  public val int size
   
-  //TODO: change method for big data!
-  var byte[] raw
+  val Object obj
+  val String secType
   
-  new(byte[] raw) { this(Type.RAW, raw) }
-  new(Type type, byte[] raw) {
-    this.type = type
-    this.size = raw.length
-    this.raw = raw
-  }
+  new(byte[] value) { this(Type.RAW, value, null) }
+  new(String value) { this(Type.STRING, value, null) }
+  new(ISection value) { this(Type.SECTION, value, value.class.name) }
   
   def has(String key) {
     //TODO: change method for big data!
     return Status.YES
   }
   
-  def byte[] getRaw() { raw }
+  def byte[] getRaw() { obj as byte[] }
   
   def getString() {
     if (type !== Type.STRING)
       throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.STRING»)''')
     
-    return new String(raw, StandardCharsets.UTF_8)
+    return obj as String
   }
   
-  def <T extends ISection> T get((ByteBuf)=>T reader) {
-    if (type !== Type.SECTION)
-      throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.SECTION»)''')
+  def <T extends ISection> T get(Class<T> clazz) {
+    if (type !== Type.SECTION || secType != clazz.name)
+      throw new RuntimeException('''Wrong section type retrieve! (type=«type», secType=«secType», try=(«Type.SECTION», «clazz.name»))''')
     
-    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
-    try {
-      buf.retain
-      buf.writeBytes(raw)
-      return reader.apply(buf)
-    } finally {
-      buf.release
+    return obj as T
+  }
+  
+  def fingerprint() {
+    switch type {
+      case RAW: DigestHelper.digest(obj as byte[])
+      case STRING: DigestHelper.digest(obj as String)
+      case SECTION: DigestHelper.digest(obj as ISection)
     }
   }
   
   def verify(String key, Slices slices) {
-    val digest = MessageDigest.getInstance("SHA-256")
-    val dRes = digest.digest(raw)
-    val fingerprint = new String(Base64.encode(dRes), StandardCharsets.UTF_8)
-    
-    return key == fingerprint
-    
     //TODO: verify slices?
+    return true
   }
   
   override write(ByteBuf buf) {
-    //TODO: change method for big data!
     buf.writeShort(type.ordinal)
-    buf.writeInt(size)
-    buf.writeBytes(raw)
+    
+    switch type {
+      case RAW: Message.writeBytes(buf, obj as byte[])
+      case STRING: Message.writeString(buf, obj as String)
+      case SECTION: {
+        Message.writeString(buf, secType)
+        (obj as ISection).write(buf)
+      }
+    }
   }
   
   static def Data read(ByteBuf buf) {
-    //TODO: change method for big data!
     val typeIndex = buf.readShort as int
-    
     val type = Type.values.get(typeIndex)
-    val size = buf.readInt
     
-    val raw = newByteArrayOfSize(size)
-    buf.readBytes(raw)
-    
-    return new Data(type, raw)
+    switch type {
+      case RAW: {
+        val obj = Message.readBytes(buf)
+        new Data(obj)
+      }
+      
+      case STRING: {
+        val obj = Message.readString(buf)
+        new Data(obj)
+      }
+      
+      case SECTION: {
+        val secType = Message.readString(buf)
+        val clazz = Class.forName(secType)
+        val meth = clazz.getDeclaredMethod("read", ByteBuf)
+        val obj = meth.invoke(clazz, buf) as ISection
+        new Data(obj)
+      }
+    }
   }
 }
