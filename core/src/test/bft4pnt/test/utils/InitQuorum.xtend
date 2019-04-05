@@ -12,6 +12,7 @@ import pt.ieeta.bft4pnt.broker.MessageBroker
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
+import pt.ieeta.bft4pnt.spi.PntDatabase
 
 @FinalFieldsConstructor
 class InitQuorum {
@@ -33,13 +34,14 @@ class InitQuorum {
       inets.add(inet)
     }
     
-    val quorum = new Quorum(t, parties.map[public], inets)
+    val quorum = new Quorum(0, t, parties.map[public], inets)
     for (i : 0 ..< n) {
+      PntDatabase.set("DB" + i, new InMemoryStoreMng(quorum), new InMemoryFileMng)
+      
       val broker = new MessageBroker(inets.get(i), parties.get(i))
-      val storeMng = new MemoryStoreManager(quorum)
       val (Message)=>boolean authorizer = [ true ]
       
-      val pnt = new PNTServer(i + 1, parties.get(i), broker, storeMng, authorizer)
+      val pnt = new PNTServer(parties.get(i), "DB" + i, broker, authorizer)
       pnt.start
       
       while (!pnt.ready)

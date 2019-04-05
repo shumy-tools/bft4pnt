@@ -1,0 +1,3 @@
+1) Compress and encrypt data on transit?
+2) Do I really need to send the quorum configuration? Or do I just need to confirm that the message is part of the quorum?
+3) Should I replace message id to round?

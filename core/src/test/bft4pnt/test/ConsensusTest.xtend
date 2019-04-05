@@ -1,17 +1,17 @@
 package bft4pnt.test
 
+import bft4pnt.test.utils.InitQuorum
 import java.util.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 import net.jodah.concurrentunit.Waiter
 import org.junit.jupiter.api.Test
+import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
-import bft4pnt.test.utils.InitQuorum
-import pt.ieeta.bft4pnt.msg.Data
 
 class ConsensusTest {
   def void assertError(Waiter waiter, Message reply, String msg) {
@@ -71,7 +71,7 @@ class ConsensusTest {
         waiter.assertVote(reply, 2L)
         
         val rVote = reply.body as Reply
-        voteReplies.put(rVote.party, reply)
+        voteReplies.put(rVote.party.index, reply)
         
         if (voteReplies.size == 2) {
           val u1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
@@ -146,7 +146,7 @@ class ConsensusTest {
         val rVote = reply.body as Reply
         
         if (rVote.propose.round == 1) {
-          voteReplies.put(rVote.party, reply)
+          voteReplies.put(rVote.party.index, reply)
           if (voteReplies.size == 3) {
             val ua1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
             for (sendTo : 1 .. 3)
@@ -224,7 +224,7 @@ class ConsensusTest {
         val rVote = reply.body as Reply
         
         if (rVote.propose.round == 1) {
-          voteReplies.put(rVote.party, reply)
+          voteReplies.put(rVote.party.index, reply)
           if (voteReplies.size == 3) {
             val ua1 = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
             for (sendTo : 1 .. 3)
@@ -254,7 +254,7 @@ class ConsensusTest {
       if (reply.id == 5L && #[1,2,3].contains(party)) {
         waiter.assertVote(reply, 3L)
         val rVote = reply.body as Reply
-        voteReplies.put(rVote.party, reply)
+        voteReplies.put(rVote.party.index, reply)
         if (voteReplies.size == 3) {
           val ua2 = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies, d1)
           for (sendTo : 1 .. 4)

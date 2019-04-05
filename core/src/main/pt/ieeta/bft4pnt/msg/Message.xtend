@@ -5,30 +5,13 @@ import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.PrivateKey
-import java.util.HashMap
-import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
-import pt.ieeta.bft4pnt.crypto.ArraySlice
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
+import java.util.ArrayList
+import java.util.Collections
+import java.util.List
 import org.eclipse.xtend.lib.annotations.Accessors
-
-@FinalFieldsConstructor
-class Replica implements ISection {
-  public val ArraySlice slice
-  public val int party
-  public val byte[] signature
-  
-  override write(ByteBuf buf) {
-    buf.writeInt(party)
-    Message.writeBytes(buf, signature)
-  }
-  
-  static def Replica read(ByteBuf buf, ArraySlice slice) {
-    val party = buf.readInt
-    val signature = Message.readBytes(buf)
-    
-    return new Replica(slice, party, signature)
-  }
-} 
+import pt.ieeta.bft4pnt.crypto.ArraySlice
+import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
 class Message {
   //WARNING: don't change the position of defined types.
@@ -36,44 +19,27 @@ class Message {
     INSERT, UPDATE, PROPOSE, REPLY, GET, ERROR
   }
   
-  public var long id = 0
+  // slice view of the signed data, this data is not transmitted
+  @Accessors(PUBLIC_GETTER) var ArraySlice sigSlice = null
   
+  // replica management, this data is not transmitted
+  val acceptedReplicas = new ArrayList<Replica>
+  
+  public var long id = 0
   public val int version
   public val Type type
   public val Record record
   public val ISection body
   
   var Signature signature
-  val replicas = new HashMap<Integer, Replica>
-  val newReplicas = new HashMap<Integer, PrivateKey>
   
-  // data for (insert, update)
-  @Accessors(PUBLIC_GETTER) var Data data = null
+  var Data data = new Data
+  var List<Replica> replicas = Collections.EMPTY_LIST
+  val onReplicasChange = new ArrayList<()=>void>
   
-  def getSource() { signature.source }
-  def getSignature() { signature.signature }
-  def getReplicaParties() { replicas.keySet }
-  
-  def setData(Data data) {
-    if (type !== Type.INSERT && type !== Type.UPDATE)
-      throw new RuntimeException("Only (insert, update) messages have data!")
-    
-    this.data = data
-  }
-  
-  def verifyReplicas(Quorum quorum) {
-    for (party : replicas.keySet) {
-      val key = quorum.getPartyKey(party)
-      val replica = replicas.get(party)
-      if (!SignatureHelper.verify(key, replica.slice, replica.signature))
-        return false
-    }
-    
-    return true
-  } 
-  
-  new(Record record, ISection body) {
-    this.version = 1
+  new(Record record, ISection body) { this(1, record, body) }
+  new(int version, Record record, ISection body) {
+    this.version = version
     this.type = switch body {
       Insert: Type.INSERT
       Update: Type.UPDATE
@@ -89,16 +55,48 @@ class Message {
     this.body = body
   }
   
-  new(int version, Type type, Record record, ISection body) {
-    this.version = version
-    this.type = type
+  synchronized def getSource() { KeyPairHelper.encode(signature.source) }
+  synchronized def getSignature() { signature.signature }
+  
+  synchronized def Data getData() { data }
+  synchronized def void setData(Data data) {
+    if (type !== Type.INSERT && type !== Type.UPDATE)
+      throw new RuntimeException("Only (insert, update) messages have data!")
     
-    this.record = record
-    this.body = body
+    this.data = data
   }
   
-  def setReplica(int party, PrivateKey key) {
-    newReplicas.put(party, key)
+  synchronized def List<Replica> getReplicas() {
+    Collections.unmodifiableList(replicas)
+  }
+  
+  synchronized def Replica setLocalReplica(Party party, PrivateKey key) {
+    val replicaSig = SignatureHelper.sign(key, sigSlice)
+    val rep = new Replica(sigSlice, party, replicaSig)
+    
+    addReplica(rep)
+    return rep
+  }
+  
+  synchronized def void addReplica(Replica rep) {
+    if (type !== Type.INSERT && type !== Type.UPDATE)
+      throw new RuntimeException("Only (insert, update) messages have replicas!")
+      
+    //TODO: override existing replica (party, quorum) instead of ignoring?
+    if (!replicas.exists[party == rep.party])
+      this.replicas.add(rep)
+    
+    //report change to storage
+    onReplicasChange.forEach[apply]
+  }
+  
+  synchronized def void acceptReplica(Replica rep) {
+    if (!acceptedReplicas.exists[party == rep.party])
+      acceptedReplicas.add(rep)
+  }
+  
+  synchronized def int countReplicas() {
+    acceptedReplicas.size + 1
   }
   
   private def void write(ByteBuf buf) {
@@ -120,22 +118,13 @@ class Message {
       signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
       signature.write(buf)
       
-      if (type === Type.UPDATE) {
-        // add or override new replicas
-        for (party : newReplicas.keySet) {
-          val rSig = SignatureHelper.sign(newReplicas.get(party), block)
-          val replica = new Replica(block, party, rSig)
-          replicas.put(party, replica)
-        }
+      if (type === Type.INSERT || type === Type.UPDATE) {
+        data.write(buf)
         
-        newReplicas.clear
         buf.writeInt(replicas.size)
-        for (rep : replicas.values)
+        for (rep : replicas)
           rep.write(buf)
       }
-      
-      if (type === Type.INSERT || type === Type.UPDATE)
-        data.write(buf)
       
       return buf
     } finally {
@@ -187,32 +176,32 @@ class Message {
         val signature = Signature.read(buf)
       less += (b1 - buf.readableBytes)
       
-      val replicas = new HashMap<Integer, Replica>
-      if (type === Type.UPDATE) {
+      var Data data = null
+      val replicas = new ArrayList<Replica>
+      if (type === Type.INSERT || type === Type.UPDATE) {
+        val b2 = buf.readableBytes
+          data = Data.read(buf)
+        less += (b2 - buf.readableBytes)
+        
         val number = buf.readInt; less += 4
         for (n : 0 ..< number) {
-          val b2 = buf.readableBytes
-            val rep = Replica.read(buf, block)
-          less += (b2 - buf.readableBytes)
-          replicas.put(rep.party, rep)
+          val b3 = buf.readableBytes
+            val rep = Replica.read(buf, block.remove(less))
+          less += (b3 - buf.readableBytes)
+          replicas.add(rep)
         }
       }
       
-      val data = if (type === Type.INSERT || type === Type.UPDATE) {
-        val b3 = buf.readableBytes
-          val data = Data.read(buf)
-        less += (b3 - buf.readableBytes)
-        data
-      }
-      
       // Verify the correctness of the source digital signature
-      if (!signature.verify(block.remove(less)))
+      val sigSlice = block.remove(less)
+      if (!signature.verify(sigSlice))
         return new ReadResult("Incorrect signature!")
       
-      val msg = new Message(version, type, record, body)
+      val msg = new Message(version, record, body)
       msg.id = id
+      msg.sigSlice = sigSlice
       msg.signature = signature
-      msg.replicas.putAll(replicas)
+      msg.replicas = replicas
       msg.data = data
       
       return new ReadResult(msg)
@@ -285,7 +274,7 @@ class Message {
       Insert:   ''', type=«body.type»'''
       Update:   ''', q=«body.quorum» index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size»'''
       Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
-      Reply:    ''', type=«body.type»«IF body.quorum !== null», q=«body.quorum»«ENDIF»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
+      Reply:    ''', type=«body.type», party=(«body.party.index», «body.party.quorum»)«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
       Get:      ''', index=«body.index», slices=«body.slices»'''
       Error:    ''', code=«body.code», error=«body.msg»'''
     }

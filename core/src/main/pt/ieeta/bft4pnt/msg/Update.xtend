@@ -74,11 +74,11 @@ class Update implements ISection {
       val reply = msgReply.body
       if (reply instanceof Reply) {
         if (reply.type === Reply.Type.VOTE
-          && reply.quorum !== null && reply.quorum == quorum
-          && reply.propose !== null && reply.propose.index === propose.index && reply.propose.fingerprint == propose.fingerprint && reply.propose.round === propose.round
+          && reply.party.quorum == quorum
+          && reply.propose.index === propose.index && reply.propose.fingerprint == propose.fingerprint && reply.propose.round === propose.round
         ) {
           val vote = new Vote(party, msgReply.signature)
-          votes.add(vote) 
+          votes.add(vote)
         }
       }
     }

@@ -8,12 +8,11 @@ import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
-import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IRecord
 import pt.ieeta.bft4pnt.spi.IStore
 import pt.ieeta.bft4pnt.spi.IStoreManager
 
-class MemoryStoreManager implements IStoreManager {
+class InMemoryStoreMng extends IStoreManager {
   val alias = new ConcurrentHashMap<String, String>
   val clients = new ConcurrentHashMap<String, IStore>
   
@@ -25,25 +24,20 @@ class MemoryStoreManager implements IStoreManager {
   
   override alias(String alias) { this.alias.get(alias) }
   
-  override local() { internalGetOrCreate("local") }
-  
-  override getOrCreate(String udi) {
-    if (udi == "local")
-      throw new RuntimeException("Reserved store.")
-    
-    internalGetOrCreate(udi)
+  override pendingReplicas(String party) {
+    throw new UnsupportedOperationException("TODO: auto-generated method stub")
   }
   
-  private def internalGetOrCreate(String udi) {
+  override internalGetOrCreate(String udi) {
     clients.get(udi) ?: {
-      val created = new MemoryStore
+      val created = new InMemoryStore
       clients.put(udi, created)
       created
     }
   }
 }
 
-class MemoryStore implements IStore {
+class InMemoryStore implements IStore {
   val records = new HashMap<String, IRecord>
   
   override insert(Message msg) {
@@ -57,41 +51,21 @@ class MemoryStore implements IStore {
   }
 }
 
-class StoreRecord implements IRecord {
+class StoreRecord extends IRecord {
   @Accessors var Message vote
-  
-  var last = 0
-  val history = new ArrayList<Message>
+  @Accessors var int lastIndex = 0
+  @Accessors val history = new ArrayList<Message>
   
   new(Message insert) {
     history.add(insert)
   }
   
-  override getType() {
-    val insert = history.get(0).body as Insert
-    insert.type
+  override protected addHistory(Message msg) {
+    history.add(msg)
   }
   
-  override lastIndex() { last }
-  override lastCommit() { getCommit(last) }
-  
-  override getCommit(int index) {
-    if (index === -1) lastCommit
-    if (index > last) return null
-    
-    history.get(index)
+  override protected setHistory(int index, Message msg) {
+    history.set(index, msg)
   }
   
-  override update(Message msg) {
-    val update = msg.body as Update
-    if (update.propose.index > history.size)
-      throw new RuntimeException("Trying to update ahead!")
-    
-    if (update.propose.index === history.size)
-      history.add(msg)
-    else
-      history.set(update.propose.index, msg)
-    
-    last = update.propose.index
-  }
 }

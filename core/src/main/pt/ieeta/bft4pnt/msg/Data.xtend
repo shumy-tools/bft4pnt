@@ -6,7 +6,7 @@ import pt.ieeta.bft4pnt.crypto.DigestHelper
 
 @FinalFieldsConstructor
 class Data implements ISection {
-  enum Type { RAW, STRING, SECTION }
+  enum Type { EMPTY, RAW, STRING, SECTION, FILE }
   enum Status { YES, NO, PENDING }
   
   public val Type type
@@ -16,16 +16,29 @@ class Data implements ISection {
   
   var String fingerprint = null
   
+  new() { this(Type.EMPTY, null, null) }
   new(byte[] value) { this(Type.RAW, value, null) }
   new(String value) { this(Type.STRING, value, null) }
   new(ISection value) { this(Type.SECTION, value, value.class.name) }
   
   def has(String key) {
-    //TODO: change method for big data!
+    if (type === Type.EMPTY)
+      return Status.NO
+    
+    if (type === Type.FILE) {
+      //TODO: get status from the file manager
+      return Status.NO
+    }
+    
     return Status.YES
   }
   
-  def byte[] getRaw() { obj as byte[] }
+  def byte[] getRaw() {
+    if (type !== Type.RAW)
+      throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.STRING»)''')
+    //TODO: get bytes from other types!
+    obj as byte[]
+  }
   
   def getString() {
     if (type !== Type.STRING)
@@ -49,6 +62,7 @@ class Data implements ISection {
       case RAW: DigestHelper.digest(obj as byte[])
       case STRING: DigestHelper.digest(obj as String)
       case SECTION: DigestHelper.digest(obj as ISection)
+      //TODO: get fingerprint from the file manager
     }
   }
   
@@ -67,6 +81,7 @@ class Data implements ISection {
         Message.writeString(buf, secType)
         (obj as ISection).write(buf)
       }
+      case FILE: {} //do nothing, data is in the file manager
     }
   }
   
@@ -92,6 +107,8 @@ class Data implements ISection {
         val obj = meth.invoke(clazz, buf) as ISection
         new Data(obj)
       }
+      
+      case FILE: {} //do nothing, data is in the file manager
     }
   }
 }

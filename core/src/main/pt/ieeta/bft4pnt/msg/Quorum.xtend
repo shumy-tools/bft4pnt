@@ -1,46 +1,72 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
+import java.net.InetSocketAddress
 import java.security.PublicKey
 import java.util.ArrayList
+import java.util.Collections
+import java.util.HashMap
 import java.util.List
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import java.net.InetSocketAddress
-import java.util.Collections
+import java.util.Set
 
 class Quorum implements ISection {
+  // helper storage, is not transmitted
+  val parties =  new HashMap<String, Party>
+  
+  public val int index
   public val int t
-  public val List<PublicKey> parties
+  public val List<PublicKey> keys
   public val List<InetSocketAddress> addresses
   
-  def getN() { parties.size }
+  def getN() { keys.size }
   
-  new(int t, List<PublicKey> parties, List<InetSocketAddress> addresses) {
+  new(int index, int t, List<PublicKey> keys, List<InetSocketAddress> addresses) {
+    this.index = index
     this.t = t
-    this.parties = Collections.unmodifiableList(parties)
+    this.keys = Collections.unmodifiableList(keys)
     this.addresses = Collections.unmodifiableList(addresses)
     
-    if (n < 2*t + 1 || parties.size !== addresses.size)
+    if (n < 2*t + 1 || keys.size !== addresses.size)
       throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
+    
+    var party = 1
+    for (key : keys) {
+      val sKey = KeyPairHelper.encode(key)
+      parties.put(sKey, new Party(party, index))
+      party++
+    }
+    
+    if (keys.size !== parties.size)
+      throw new RuntimeException('''Repeated keys in the quorum configuration!''')
+  }
+  
+  def Set<String> getAllParties() {
+    parties.keySet
+  }
+  
+  def Party getParty(String key) {
+    parties.get(key)
   }
   
   def getPartyKey(int party) {
-    if (party > parties.size)
+    if (party > keys.size)
       return null
-    parties.get(party - 1)
+    keys.get(party - 1)
   }
   
-  def getPartyAddres(int party) {
+  def getPartyAddress(int party) {
     if (party > addresses.size)
       return null
     addresses.get(party - 1)
   }
   
   override write(ByteBuf buf) {
+    buf.writeInt(index)
     buf.writeInt(t)
-    buf.writeInt(parties.size)
+    buf.writeInt(keys.size)
     
-    for (key : parties)
+    for (key : keys)
       Message.writeBytes(buf, key.encoded)
     
     for (address : addresses)
@@ -48,16 +74,17 @@ class Quorum implements ISection {
   }
   
   static def Quorum read(ByteBuf buf) {
+    val index = buf.readInt
     val t = buf.readInt
     val number = buf.readInt
     
-    val parties = new ArrayList<PublicKey>(number)
+    val keys = new ArrayList<PublicKey>(number)
     val addresses = new ArrayList<InetSocketAddress>(number)
     
     for (n : 0 ..< number) {
       val bKey = Message.readBytes(buf)
       val key = KeyPairHelper.read(bKey)
-      parties.add(key)
+      keys.add(key)
     }
     
     for (n : 0 ..< number) {  
@@ -67,6 +94,6 @@ class Quorum implements ISection {
       addresses.add(address)
     }
     
-    return new Quorum(t, parties, addresses)
+    return new Quorum(index, t, keys, addresses)
   }
 }
