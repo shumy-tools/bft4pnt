@@ -11,10 +11,15 @@ import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.spi.IRecord
 import pt.ieeta.bft4pnt.spi.IStore
 import pt.ieeta.bft4pnt.spi.IStoreManager
+import pt.ieeta.bft4pnt.msg.Party
+import java.util.List
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 
 class InMemoryStoreMng extends IStoreManager {
+  val repTable = new ConcurrentHashMap<Party, List<Message>>
+  
   val alias = new ConcurrentHashMap<String, String>
-  val clients = new ConcurrentHashMap<String, IStore>
+  val stores = new ConcurrentHashMap<String, IStore>
   
   new(Quorum quorum) {
     val msg = Insert.create(0L, "local", "quorum", new Data(quorum))
@@ -24,24 +29,26 @@ class InMemoryStoreMng extends IStoreManager {
   
   override alias(String alias) { this.alias.get(alias) }
   
-  override pendingReplicas(String party) {
-    throw new UnsupportedOperationException("TODO: auto-generated method stub")
+  override pendingReplicas(Party party) {
+    repTable.get(party)
   }
   
   override internalGetOrCreate(String udi) {
-    clients.get(udi) ?: {
-      val created = new InMemoryStore
-      clients.put(udi, created)
+    stores.get(udi) ?: {
+      val created = new InMemoryStore(this)
+      stores.put(udi, created)
       created
     }
   }
 }
 
+@FinalFieldsConstructor
 class InMemoryStore implements IStore {
+  val InMemoryStoreMng mng
   val records = new HashMap<String, IRecord>
   
   override insert(Message msg) {
-    val rec = new StoreRecord(msg)
+    val rec = new InMemoryRecord(mng, msg)
     records.put(msg.record.fingerprint, rec)
     rec
   }
@@ -51,21 +58,32 @@ class InMemoryStore implements IStore {
   }
 }
 
-class StoreRecord extends IRecord {
+class InMemoryRecord extends IRecord {
+  val InMemoryStoreMng mng
+  
   @Accessors var Message vote
   @Accessors var int lastIndex = 0
   @Accessors val history = new ArrayList<Message>
   
-  new(Message insert) {
+  new(InMemoryStoreMng mng, Message insert) {
+    this.mng = mng
     history.add(insert)
+    updateRepTable(insert)
   }
   
   override protected addHistory(Message msg) {
     history.add(msg)
+    updateRepTable(msg)
   }
   
   override protected setHistory(int index, Message msg) {
     history.set(index, msg)
+    updateRepTable(msg)
   }
   
+  private def void updateRepTable(Message msg) {
+    for (rep : msg.replicas) {
+      //TODO: update repTable?
+    }
+  }
 }

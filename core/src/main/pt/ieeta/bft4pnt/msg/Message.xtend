@@ -35,7 +35,7 @@ class Message {
   
   var Data data = new Data
   var List<Replica> replicas = Collections.EMPTY_LIST
-  val onReplicasChange = new ArrayList<()=>void>
+  val onReplicasChange = Collections.synchronizedList(new ArrayList<()=>void>)
   
   new(Record record, ISection body) { this(1, record, body) }
   new(int version, Record record, ISection body) {
@@ -97,6 +97,10 @@ class Message {
   
   synchronized def int countReplicas() {
     acceptedReplicas.size + 1
+  }
+  
+  def void addReplicaChangeListener(()=>void listener) {
+    onReplicasChange.add(listener)
   }
   
   private def void write(ByteBuf buf) {

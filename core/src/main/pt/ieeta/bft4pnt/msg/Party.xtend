@@ -29,4 +29,9 @@ class Party implements ISection {
     
     return false
   }
+  
+  override hashCode() {
+    index.hashCode + quorum.hashCode
+  }
+  
 }

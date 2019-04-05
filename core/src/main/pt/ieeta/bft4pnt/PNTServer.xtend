@@ -56,23 +56,31 @@ class PNTServer {
       logger.info("PNT-READY on {}", '''«hostString»:«port»''')
     ], [ inetSource, msg |
       
-      // filter correct replicas that are part of the current quorum
-      val q = db.currentQuorum
-      val party = q.getParty(partyKey)
+      val currentQ = db.currentQuorum
+      val currentP = currentQ.getParty(partyKey)
       for (rep : msg.replicas) {
-        // is replicas part of the current quorum?
-        // also ignore local replica
-        if (rep.party.quorum === party.quorum && rep.party != party) {
-          val key = q.getPartyKey(rep.party.index)
-          if (rep.verifySignature(key))
-            msg.acceptReplica(rep)
+        val selectedQ = db.getQuorumAt(rep.party.quorum)
+        val selectedK = selectedQ.getPartyKey(rep.party.index)
+        if (!rep.verifySignature(selectedK)) {
+          logger.error("Incorrect replica: (index={}, quorum={})", rep.party.index, rep.party.quorum)
+          val reply = new Message(msg.record, Error.invalid("Incorrect replica signature!"))
+          reply.id =  msg.id
+          
+          broker.send(inetSource, reply)
+          return;
         }
+        
+        // filter replicas that are part of the current quorum, and ignore replicas of the local party.
+        if (rep.party.quorum === currentP.quorum && rep.party != currentP)
+          msg.acceptReplica(rep)
       }
       
       // clients do not send replies or errors, redirect to replicator
       if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
+        
+        //TODO: adapt in order to accept replicas on quorum transition!
         // is it part of the current quorum?
-        if (q.allParties.contains(msg.source)) {
+        if (currentQ.contains(msg.source)) {
           logger.error("Not part of the quorum: ({})", msg)
           val reply = new Message(msg.record, Error.unauthorized("Not part of the quorum!"))
           reply.id =  msg.id
@@ -353,9 +361,9 @@ class Replicator {
   synchronized def void fireReplication() {
     //TODO: replicate only for the current quorum?
     val q = db.currentQuorum
-    for(partyKey : q.allParties)
-      db.store.pendingReplicas(partyKey).forEach[
-        replicate(q, partyKey)
+    for(party : q.allParties)
+      db.store.pendingReplicas(party).forEach[
+        replicate(q, party.index)
       ]
   }
   
@@ -388,9 +396,8 @@ class Replicator {
     }
   }
   
-  private def void replicate(Message msg, Quorum quorum, String partyKey) {
-    val party = quorum.getParty(partyKey)
-    val inet = quorum.getPartyAddress(party.index)
+  private def void replicate(Message msg, Quorum quorum, Integer partyIndex) {
+    val inet = quorum.getPartyAddress(partyIndex)
     broker.send(inet, msg)
   }
 }

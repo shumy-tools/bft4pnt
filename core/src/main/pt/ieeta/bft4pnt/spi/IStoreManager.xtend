@@ -1,9 +1,10 @@
 package pt.ieeta.bft4pnt.spi
 
-import pt.ieeta.bft4pnt.msg.Message
 import java.util.List
-import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.msg.Insert
+import pt.ieeta.bft4pnt.msg.Message
+import pt.ieeta.bft4pnt.msg.Update
+import pt.ieeta.bft4pnt.msg.Party
 
 abstract class IStoreManager {
   def local() { internalGetOrCreate("local") }
@@ -17,7 +18,7 @@ abstract class IStoreManager {
   
   def String alias(String alias) // get local record for alias
   
-  def List<Message> pendingReplicas(String party) // get pending replication messages for the selected party
+  def List<Message> pendingReplicas(Party party) // get pending replication messages for the selected party
   
   protected def IStore internalGetOrCreate(String udi)
 }
@@ -39,7 +40,15 @@ abstract class IRecord {
     if (index === -1) history.get(lastIndex)
     if (index > lastIndex) return null
     
-    history.get(index)
+    val msg = history.get(index)
+    msg.addReplicaChangeListener[
+      if (msg.type === Message.Type.INSERT)
+        setHistory(0, msg)
+      else
+        setHistory((msg.body as Update).propose.index, msg)
+    ]
+    
+    return msg
   }
   
   def update(Message msg) {

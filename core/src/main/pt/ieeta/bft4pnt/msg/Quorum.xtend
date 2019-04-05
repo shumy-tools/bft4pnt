@@ -8,7 +8,6 @@ import java.util.Collections
 import java.util.HashMap
 import java.util.List
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import java.util.Set
 
 class Quorum implements ISection {
   // helper storage, is not transmitted
@@ -41,8 +40,12 @@ class Quorum implements ISection {
       throw new RuntimeException('''Repeated keys in the quorum configuration!''')
   }
   
-  def Set<String> getAllParties() {
-    parties.keySet
+  def boolean contains(String party) {
+    parties.containsKey(party)
+  }
+  
+  def List<Party> getAllParties() {
+    parties.values.toList
   }
   
   def Party getParty(String key) {
