@@ -4,9 +4,35 @@ import java.util.List
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Update
-import pt.ieeta.bft4pnt.msg.Party
+import pt.ieeta.bft4pnt.msg.Quorum
 
 abstract class IStoreManager {
+  public static val quorumAlias = "quorum"
+  
+  synchronized def Quorum getCurrentQuorum() {
+    val qRec = local.getRecord(alias(quorumAlias))
+    if (qRec === null)
+      throw new RuntimeException('''No quorum record!''')
+    
+    getQuorumAt(qRec.lastIndex)
+  }
+  
+  synchronized def Quorum getQuorumAt(int index) {
+    val qRec = local.getRecord(alias(quorumAlias))
+    if (qRec === null)
+      throw new RuntimeException('''No quorum record!''')
+    
+    val qMsg = qRec.getCommit(index)
+    if (qMsg === null)
+      throw new RuntimeException('''No quorum at index: «index»''')
+    
+    val q = qMsg.data.get(Quorum)
+    if (q.index !== index)
+      throw new RuntimeException('''Incorrect quorum index: («q.index» != «index»)''')
+    
+    return q
+  }
+  
   def local() { internalGetOrCreate("local") }
   
   def getOrCreate(String udi) {
@@ -16,9 +42,9 @@ abstract class IStoreManager {
     internalGetOrCreate(udi)
   }
   
-  def String alias(String alias) // get local record for alias
+  def String alias(String alias)
   
-  def List<Message> pendingReplicas(Party party) // get pending replication messages for the selected party
+  def List<Message> pendingReplicas(int minimum)
   
   protected def IStore internalGetOrCreate(String udi)
 }

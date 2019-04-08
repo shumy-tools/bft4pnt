@@ -5,6 +5,7 @@ import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.PrivateKey
+import java.security.PublicKey
 import java.util.ArrayList
 import java.util.Collections
 import java.util.List
@@ -21,9 +22,6 @@ class Message {
   
   // slice view of the signed data, this data is not transmitted
   @Accessors(PUBLIC_GETTER) var ArraySlice sigSlice = null
-  
-  // replica management, this data is not transmitted
-  val acceptedReplicas = new ArrayList<Replica>
   
   public var long id = 0
   public val int version
@@ -90,13 +88,18 @@ class Message {
     onReplicasChange.forEach[apply]
   }
   
-  synchronized def void acceptReplica(Replica rep) {
-    if (!acceptedReplicas.exists[party == rep.party])
-      acceptedReplicas.add(rep)
-  }
-  
-  synchronized def int countReplicas() {
-    acceptedReplicas.size + 1
+  //count the replicas for the respective quorum. It should include is own even if the replica doesn't exist yet.
+  synchronized def int countReplicas(Quorum quorum, (Party)=>PublicKey getPartyKey) {
+    var count = 0
+    for (rep : replicas) {
+      val key = getPartyKey.apply(rep.party)
+      val encodedKey = KeyPairHelper.encode(key)
+      if (quorum.contains(encodedKey) && rep.verifySignature(key))
+        count++
+    }
+    
+    // For consistency, the party that is requesting the count is ignored and then apply "+1" to count itself.
+    return count + 1
   }
   
   def void addReplicaChangeListener(()=>void listener) {

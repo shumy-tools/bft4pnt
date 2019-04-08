@@ -7,24 +7,6 @@ import java.util.Map
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 
 @FinalFieldsConstructor
-class Vote implements ISection {
-  public val Integer party
-  public val byte[] signature
-  
-  override write(ByteBuf buf) {
-    buf.writeInt(party)
-    Message.writeBytes(buf, signature)
-  }
-  
-  static def Vote read(ByteBuf buf) {
-    val party = buf.readInt
-    val signature = Message.readBytes(buf)
-    
-    return new Vote(party, signature)
-  }
-}
-
-@FinalFieldsConstructor
 class Update implements ISection {
   public val Integer quorum
   public val Propose propose
@@ -90,5 +72,23 @@ class Update implements ISection {
       id = msgId
       data = block
     ]
+  }
+}
+
+@FinalFieldsConstructor
+class Vote implements ISection {
+  public val Integer party
+  public val byte[] signature
+  
+  override write(ByteBuf buf) {
+    buf.writeInt(party)
+    Message.writeBytes(buf, signature)
+  }
+  
+  static def Vote read(ByteBuf buf) {
+    val party = buf.readInt
+    val signature = Message.readBytes(buf)
+    
+    return new Vote(party, signature)
   }
 }
