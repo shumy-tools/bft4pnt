@@ -3,14 +3,15 @@ package pt.ieeta.bft4pnt.spi
 import java.util.List
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.msg.Quorum
+import pt.ieeta.bft4pnt.msg.Update
 
 abstract class IStoreManager {
+  public static val localStore = "admin"
   public static val quorumAlias = "quorum"
   
   synchronized def Quorum getCurrentQuorum() {
-    val qRec = local.getRecord(alias(quorumAlias))
+    val qRec = local.getRecord(getRecordFromAlias(quorumAlias))
     if (qRec === null)
       throw new RuntimeException('''No quorum record!''')
     
@@ -18,7 +19,7 @@ abstract class IStoreManager {
   }
   
   synchronized def Quorum getQuorumAt(int index) {
-    val qRec = local.getRecord(alias(quorumAlias))
+    val qRec = local.getRecord(getRecordFromAlias(quorumAlias))
     if (qRec === null)
       throw new RuntimeException('''No quorum record!''')
     
@@ -33,20 +34,13 @@ abstract class IStoreManager {
     return q
   }
   
-  def local() { internalGetOrCreate("local") }
+  def local() { getOrCreate(localStore) }
   
-  def getOrCreate(String udi) {
-    if (udi == "local")
-      throw new RuntimeException("Reserved store.")
-    
-    internalGetOrCreate(udi)
-  }
-  
-  def String alias(String alias)
+  def void setAlias(String record, String alias)
+  def String getRecordFromAlias(String alias)
   
   def List<Message> pendingReplicas(int minimum)
-  
-  protected def IStore internalGetOrCreate(String udi)
+  def IStore getOrCreate(String udi)
 }
 
 interface IStore {
@@ -67,12 +61,12 @@ abstract class IRecord {
     if (index > lastIndex) return null
     
     val msg = history.get(index)
-    msg.addReplicaChangeListener[
+    msg.addReplicaChangeListener("IStoreManager", [
       if (msg.type === Message.Type.INSERT)
         setHistory(0, msg)
       else
         setHistory((msg.body as Update).propose.index, msg)
-    ]
+    ])
     
     return msg
   }

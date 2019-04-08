@@ -19,18 +19,4 @@ class Record implements ISection {
     
     return new Record(udi, fingerprint)
   }
-  
-  override equals(Object obj) {
-    if (obj === this)
-      return true
-    
-    if (obj instanceof Record)
-      return this.udi == obj.udi && this.fingerprint == obj.fingerprint
-    
-    return false
-  }
-  
-  override hashCode() {
-    udi.hashCode + fingerprint.hashCode
-  }
 }

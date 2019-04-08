@@ -63,7 +63,7 @@ class ConsensusTest {
     val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 2L)
     
     val voteReplies = new HashMap<Integer, Message>
-    net.start[ party, reply |
+    net.start([ party, reply |
       if (reply.id == 1L)
         net.send(party, pa1)
       
@@ -105,10 +105,11 @@ class ConsensusTest {
       
       if (counter.get == 3)
         waiter.resume
-    ]
+    ], [
+      for (party : 1 .. 4)
+        net.send(party, insert)
+    ])
     
-    for (party : 1 .. 4)
-      net.send(party, insert)
     waiter.await(2000)
   }
   
@@ -134,7 +135,7 @@ class ConsensusTest {
     val pb2 = Propose.create(4L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
     
     val voteReplies = new HashMap<Integer, Message>
-    net.start[ party, reply |
+    net.start([ party, reply |
       if (reply.id == 1L && #[1,2,3].contains(party))
         net.send(party, pa1)
       
@@ -180,10 +181,11 @@ class ConsensusTest {
       
       if (counter.get == 4)
         waiter.resume
-    ]
+    ], [
+      for (party : 1 .. 4)
+        net.send(party, insert)
+    ])
     
-   for (party : 1 .. 4)
-      net.send(party, insert)
     waiter.await(2000)
   }
   
@@ -212,7 +214,7 @@ class ConsensusTest {
     val pa3 = Propose.create(5L, udi, insert.record.fingerprint, d1.fingerprint, 1, 3L)
     
     val voteReplies = new HashMap<Integer, Message>
-    net.start[ party, reply |
+    net.start([ party, reply |
       if (reply.id == 1L && #[1,2,3].contains(party))
         net.send(party, pa1)
       
@@ -275,10 +277,11 @@ class ConsensusTest {
       
       if (counter.get == 9)
         waiter.resume
-    ]
+    ], [
+      for (party : 1 .. 4)
+        net.send(party, insert)
+    ])
     
-    for (party : 1 .. 4)
-      net.send(party, insert)
     waiter.await(2000)
   }
 }

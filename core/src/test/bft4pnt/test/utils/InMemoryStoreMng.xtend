@@ -7,10 +7,7 @@ import java.util.Map
 import java.util.concurrent.ConcurrentHashMap
 import org.eclipse.xtend.lib.annotations.Accessors
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
-import pt.ieeta.bft4pnt.msg.Data
-import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IRecord
 import pt.ieeta.bft4pnt.spi.IStore
@@ -41,10 +38,7 @@ class RepTable {
   
   synchronized def void update(Message msg) {
     val key = msg.key
-    val counts = msg.countReplicas(mng.currentQuorum)[
-      val pQuorum = mng.getQuorumAt(quorum)
-      pQuorum.getPartyKey(index)
-    ]
+    val counts = msg.countReplicas(mng)
     
     // remove from the previous count.
     val previousCount = msgCounts.get(key) ?: 0
@@ -82,21 +76,16 @@ class InMemoryStoreMng extends IStoreManager {
   val alias = new ConcurrentHashMap<String, String>
   val stores = new ConcurrentHashMap<String, IStore>
   
-  new(Quorum quorum) {
-    repTable = new RepTable(this)
-    
-    val msg = Insert.create(0L, "local", IStoreManager.quorumAlias, new Data(quorum))
-    alias.put(IStoreManager.quorumAlias , msg.record.fingerprint)
-    local.insert(msg)
-  }
+  new() { repTable = new RepTable(this) }
   
-  override alias(String alias) { this.alias.get(alias) }
+  override setAlias(String record, String alias) { this.alias.put(alias, record) }
+  override getRecordFromAlias(String alias) { this.alias.get(alias) }
   
   override pendingReplicas(int minimum) {
     repTable.get(minimum)
   }
   
-  override internalGetOrCreate(String udi) {
+  override getOrCreate(String udi) {
     stores.get(udi) ?: {
       val created = new InMemoryStore(repTable)
       stores.put(udi, created)

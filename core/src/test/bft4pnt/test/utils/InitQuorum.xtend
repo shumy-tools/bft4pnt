@@ -4,15 +4,18 @@ import java.net.InetSocketAddress
 import java.security.KeyPair
 import java.security.Security
 import java.util.ArrayList
-import java.util.List
+import java.util.concurrent.atomic.AtomicInteger
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.PNTServer
 import pt.ieeta.bft4pnt.broker.MessageBroker
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.msg.Data
+import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.spi.PntDatabase
+import pt.ieeta.bft4pnt.spi.IStoreManager
 
 @FinalFieldsConstructor
 class InitQuorum {
@@ -20,7 +23,6 @@ class InitQuorum {
   val MessageBroker client
   
   public val Quorum quorum
-  val List<InetSocketAddress> parties
   
   static def InitQuorum init(int port, int n, int t) {
     Security.addProvider(new BouncyCastleProvider)
@@ -34,16 +36,13 @@ class InitQuorum {
       inets.add(inet)
     }
     
-    val quorum = new Quorum(0, t, parties.map[public], inets)
     for (i : 0 ..< n) {
-      PntDatabase.set("DB" + i, new InMemoryStoreMng(quorum), new InMemoryFileMng)
+      PntDatabase.set("DB" + i, new InMemoryStoreMng, new InMemoryFileMng)
       
       val broker = new MessageBroker(inets.get(i), parties.get(i))
       val (Message)=>boolean authorizer = [ true ]
       
       val pnt = new PNTServer(parties.get(i), "DB" + i, broker, authorizer)
-      pnt.start
-      
       while (!pnt.ready)
         Thread.sleep(100)
     }
@@ -51,17 +50,30 @@ class InitQuorum {
     val inet = new InetSocketAddress("127.0.0.1", port)
     val keys = KeyPairHelper.genKeyPair
     val client = new MessageBroker(inet, keys)
+    val quorum = new Quorum(0, t, parties.map[public], inets)
     
-    return new InitQuorum(port, client, quorum, inets)
+    return new InitQuorum(port, client, quorum)
   }
   
   def void send(int party, Message msg) {
-    client.send(parties.get(party - 1), msg)
+    client.send(quorum.getPartyAddress(party), msg)
   }
   
-  def void start((Integer, Message)=>void handler) {
-    client.start([], [ inetSource, reply |
-      handler.apply(inetSource.port - port, reply)
-    ])
+  def void start((Integer, Message)=>void handler, ()=>void startTest) {
+    val counter = new AtomicInteger(0)
+    client.start[ inetSource, reply |
+      if (counter.incrementAndGet === quorum.n) {
+        println("Quorum set, starting test.")
+        startTest.apply
+      }
+      
+      if (reply.id > 0L)
+        handler.apply(inetSource.port - port, reply)
+    ]
+    
+    // set quorum config
+    val insert = Insert.create(0L, IStoreManager.localStore, IStoreManager.quorumAlias, new Data(quorum))
+    for (party : 1 .. quorum.n)
+      send(party, insert)
   }
 }

@@ -12,10 +12,11 @@ import io.netty.channel.socket.nio.NioDatagramChannel
 import java.net.InetSocketAddress
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
+import java.util.concurrent.atomic.AtomicReference
 
 @FinalFieldsConstructor
 class IncommingPacketHandler extends SimpleChannelInboundHandler<DatagramPacket> {
-  public val (InetSocketAddress, ByteBuf)=>void handler
+  val (InetSocketAddress, ByteBuf)=>void handler
   
   override protected channelRead0(ChannelHandlerContext ctx, DatagramPacket packet) throws Exception {
     handler.apply(packet.sender, packet.content)
@@ -23,7 +24,7 @@ class IncommingPacketHandler extends SimpleChannelInboundHandler<DatagramPacket>
 }
 
 class BrokerInitializer extends ChannelInitializer<NioDatagramChannel> {
-  public val IncommingPacketHandler packetHandler
+  val IncommingPacketHandler packetHandler
   
   new((InetSocketAddress, ByteBuf)=>void handler) {
     this.packetHandler = new IncommingPacketHandler(handler)
@@ -38,15 +39,15 @@ class DataBroker {
   static val logger = LoggerFactory.getLogger(DataBroker.simpleName)
   
   val InetSocketAddress address
-  var Channel channel = null
+  val channel = new AtomicReference<Channel>
   
   new(InetSocketAddress address) {
     this.address = address
   }
   
-  def isReady() { channel !== null }
+  def isReady() { channel.get !== null }
   
-  def void start((InetSocketAddress)=>void whenReady, (InetSocketAddress, ByteBuf)=>void handler) {
+  def void start((InetSocketAddress, ByteBuf)=>void handler) {
     new Thread[
       Thread.currentThread.name = "MessageBroker-Thread"
       
@@ -58,11 +59,10 @@ class DataBroker {
           handler(new BrokerInitializer(handler))
         ]
         
-        channel = b.bind(address).sync.channel
+        channel.set = b.bind(address).sync.channel
         logger.debug('BFT-PNT broker available at {}', address.port)
-        whenReady.apply(address)
         
-        channel.closeFuture.await
+        channel.get.closeFuture.await
         logger.debug('BFT-PNT broker stopped')
       } catch(Throwable ex) {
         ex.printStackTrace
@@ -73,9 +73,7 @@ class DataBroker {
   }
   
   def void send(InetSocketAddress target, ByteBuf data) {
-    if (channel === null) return
-    
     val packet = new DatagramPacket(data, target)
-    channel.writeAndFlush(packet)
+    channel.get.writeAndFlush(packet)
   }
 }

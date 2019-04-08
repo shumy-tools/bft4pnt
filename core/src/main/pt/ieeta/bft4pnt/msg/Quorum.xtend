@@ -15,8 +15,9 @@ class Quorum implements ISection {
   
   public val int index
   public val int t
-  public val List<PublicKey> keys
-  public val List<InetSocketAddress> addresses
+  
+  val List<PublicKey> keys
+  val List<InetSocketAddress> addresses
   
   def getN() { keys.size }
   

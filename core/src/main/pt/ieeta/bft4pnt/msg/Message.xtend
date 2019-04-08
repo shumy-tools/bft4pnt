@@ -5,7 +5,6 @@ import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.PrivateKey
-import java.security.PublicKey
 import java.util.ArrayList
 import java.util.Collections
 import java.util.List
@@ -13,6 +12,9 @@ import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
+import pt.ieeta.bft4pnt.spi.IStoreManager
+import java.util.HashSet
+import java.util.HashMap
 
 class Message {
   //WARNING: don't change the position of defined types.
@@ -33,7 +35,7 @@ class Message {
   
   var Data data = new Data
   var List<Replica> replicas = Collections.EMPTY_LIST
-  val onReplicasChange = Collections.synchronizedList(new ArrayList<()=>void>)
+  val onReplicasChange = new HashMap<String, ()=>void>
   
   new(Record record, ISection body) { this(1, record, body) }
   new(int version, Record record, ISection body) {
@@ -64,11 +66,13 @@ class Message {
     this.data = data
   }
   
-  synchronized def List<Replica> getReplicas() {
-    Collections.unmodifiableList(replicas)
+  def List<Replica> getReplicas() {
+    synchronized(onReplicasChange) {
+      Collections.unmodifiableList(replicas)
+    }
   }
   
-  synchronized def Replica setLocalReplica(Party party, PrivateKey key) {
+  def Replica setLocalReplica(Party party, PrivateKey key) {
     val replicaSig = SignatureHelper.sign(key, sigSlice)
     val rep = new Replica(sigSlice, party, replicaSig)
     
@@ -76,34 +80,51 @@ class Message {
     return rep
   }
   
-  synchronized def void addReplica(Replica rep) {
+  def void addReplica(Replica rep) {
     if (type !== Type.INSERT && type !== Type.UPDATE)
       throw new RuntimeException("Only (insert, update) messages have replicas!")
-      
-    //TODO: override existing replica (party, quorum) instead of ignoring?
-    if (!replicas.exists[party == rep.party])
-      this.replicas.add(rep)
     
-    //report change to storage
-    onReplicasChange.forEach[apply]
+    synchronized(onReplicasChange) {
+      //TODO: override existing replica (party, quorum) instead of ignoring?
+      if (!replicas.exists[party == rep.party]) {
+        this.replicas.add(rep)
+        
+        //report change to storage
+        onReplicasChange.values.forEach[apply]
+      }
+    }
   }
   
-  //count the replicas for the respective quorum. It should include is own even if the replica doesn't exist yet.
-  synchronized def int countReplicas(Quorum quorum, (Party)=>PublicKey getPartyKey) {
-    var count = 0
-    for (rep : replicas) {
-      val key = getPartyKey.apply(rep.party)
-      val encodedKey = KeyPairHelper.encode(key)
-      if (quorum.contains(encodedKey) && rep.verifySignature(key))
-        count++
+  // count distinct replicas that are part of the current quorum
+  def int countReplicas(Party ignore, IStoreManager mng) {
+    val q = mng.currentQuorum
+    
+    // count distinct replicas
+    val counts = new HashSet<String>
+    synchronized(onReplicasChange) {
+      for (rep : replicas) {
+        val pQuorum = mng.getQuorumAt(rep.party.quorum)
+        val key = pQuorum.getPartyKey(rep.party.index)
+        
+        val encodedKey = KeyPairHelper.encode(key)
+        if (rep.party != ignore && q.contains(encodedKey) && rep.verifySignature(key))
+          counts.add(encodedKey)
+      }
     }
     
-    // For consistency, the party that is requesting the count is ignored and then apply "+1" to count itself.
-    return count + 1
+    return counts.size
   }
   
-  def void addReplicaChangeListener(()=>void listener) {
-    onReplicasChange.add(listener)
+  def int countReplicas(IStoreManager mng) {
+    countReplicas(null, mng)
+  }
+  
+  def void addReplicaChangeListener(String name, ()=>void listener) {
+    synchronized(onReplicasChange) {
+      // avoid multiples listeners for the same source.
+      if (!onReplicasChange.containsKey(name))
+        onReplicasChange.put(name, listener)
+    }
   }
   
   private def void write(ByteBuf buf) {

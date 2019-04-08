@@ -19,8 +19,8 @@ class MessageBroker {
   
   def isReady() { db.ready }
   
-  def void start((InetSocketAddress)=>void whenReady, (InetSocketAddress, Message)=>void handler) {
-    db.start(whenReady, [inetSource, data |
+  def void start((InetSocketAddress, Message)=>void handler) {
+    db.start[inetSource, data |
       try {
         val result = Message.read(data)
         if (result.hasError) {
@@ -39,7 +39,7 @@ class MessageBroker {
         val error = Error.internal(ex.message)
         db.send(inetSource, error.toMessage.write(keys))
       }
-    ])
+    ]
   }
   
   def void send(InetSocketAddress inetTarget, Message msg) {

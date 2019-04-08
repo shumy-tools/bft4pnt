@@ -22,6 +22,8 @@ import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IExtension
 import pt.ieeta.bft4pnt.spi.IStore
 import pt.ieeta.bft4pnt.spi.PntDatabase
+import pt.ieeta.bft4pnt.spi.IStoreManager
+import pt.ieeta.bft4pnt.msg.Quorum
 
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
@@ -46,14 +48,14 @@ class PNTServer {
     
     this.authorizer = authorizer
     this.replicator = new Replicator(db, broker)
+    
+    start
   }
   
   def isReady() { broker.ready }
   
   def void start() {
-    broker.start([
-      logger.info("PNT-READY on {}", '''«hostString»:«port»''')
-    ], [ inetSource, msg |
+    broker.start[ inetSource, msg |
       
       // clients do not send replies or errors, redirect to replicator
       if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
@@ -75,7 +77,7 @@ class PNTServer {
         return;
       }
       
-      // is the client message authorized?
+      // is the message authorized?
       if (!authorizer.apply(msg)) {
         logger.error("Non authorized: ({})", msg)
         val reply = new Message(msg.record, Error.unauthorized("Non authorized!"))
@@ -93,10 +95,23 @@ class PNTServer {
           broker.send(inetSource, reply)
         ]
       }
-    ])
+    ]
   }
   
   dispatch private def void handle(IStore cs, Message msg, Insert body, (Message)=>void reply) {
+    //process genesis quorum insert
+    if (msg.record.udi == IStoreManager.localStore && body.type == IStoreManager.quorumAlias) {
+      val genesis = msg.data.get(Quorum)
+      val party = genesis.getParty(partyKey)
+      
+      db.store.setAlias(msg.record.fingerprint, IStoreManager.quorumAlias)
+      cs.insert(msg)
+      
+      val rep = msg.setLocalReplica(party, keys.private)
+      reply.apply(new Message(msg.record, Reply.ack(party, rep.signature)))
+      return;
+    }
+    
     val q = db.store.currentQuorum
     val party = q.getParty(partyKey)
     
@@ -123,10 +138,10 @@ class PNTServer {
         //TODO: verify slices?
         
         //execute insert extension
+        val rep = msg.setLocalReplica(party, keys.private)
         if (ext === null || ext.insert(cs, msg))
           cs.insert(msg)
         
-        val rep = msg.setLocalReplica(party, keys.private)
         reply.apply(new Message(msg.record, Reply.ack(party, rep.signature)))
       }
     }
@@ -255,10 +270,7 @@ class PNTServer {
         (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
       ) {
         //has (n - t) commits to override?
-        val counts = msg.countReplicas(q)[
-          val pQuorum = db.store.getQuorumAt(quorum)
-          pQuorum.getPartyKey(index)
-        ]
+        val counts = msg.countReplicas(party, db.store) + 1
         
         // counts are relative to the current quorum, not the message quorum
         if (counts < (q.n - q.t)) {
@@ -284,10 +296,10 @@ class PNTServer {
         //TODO: verify slices?
         
         //execute update extension
+        val rep = msg.setLocalReplica(party, keys.private)
         if (ext === null || ext.update(cs, msg))
           record.update(msg)
         
-        val rep = msg.setLocalReplica(party, keys.private)
         reply.apply(new Message(msg.record, Reply.ack(party, body.propose, rep.signature)))
       }
     }
@@ -347,16 +359,34 @@ class Replicator {
   synchronized def void replicate() {
     val q = db.store.currentQuorum
     val nMt = q.n - q.t
-    for(party : q.allParties)
-      db.store.pendingReplicas(nMt).forEach[
-        val inet = q.getPartyAddress(party.index)
-        broker.send(inet, it)
-      ]
+    
+    db.store.pendingReplicas(nMt).forEach[ msg |
+      try {
+        for(party : q.allParties) {
+          val key = q.getPartyKey(party.index)
+          var isReplicated = false
+          for (rep : msg.replicas) {
+            val repQ = db.store.getQuorumAt(rep.party.quorum)
+            val repK = repQ.getPartyKey(rep.party.index)
+            if (KeyPairHelper.encode(key) == KeyPairHelper.encode(repK) && rep.verifySignature(repK))
+              isReplicated = true // already replicated
+          }
+          
+          if (!isReplicated) {
+            val inet = q.getPartyAddress(party.index)
+            broker.send(inet, msg)
+          }
+        }
+      } catch(Throwable ex) {
+        ex.printStackTrace
+        logger.error("Failed to replicate message: {}", msg)
+      }
+    ]
   }
   
   package def void reply(Message msg) {
     if (msg.type !== Message.Type.REPLY) {
-      logger.error("Replication error: {}", msg)
+      logger.error("Replicator received an error message: {}", msg)
       return;
     }
     
