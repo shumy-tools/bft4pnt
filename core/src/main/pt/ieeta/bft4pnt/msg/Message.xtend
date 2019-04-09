@@ -214,14 +214,17 @@ class Message {
         val number = buf.readInt; less += 4
         for (n : 0 ..< number) {
           val b3 = buf.readableBytes
-            val rep = Replica.read(buf, block.remove(less))
+            val rep = Replica.read(buf);
           less += (b3 - buf.readableBytes)
           replicas.add(rep)
         }
       }
       
-      // Verify the correctness of the source digital signature
+      // the signed data block
       val sigSlice = block.remove(less)
+      replicas.forEach[slice = sigSlice]
+      
+      // Verify the correctness of the source digital signature
       if (!signature.verify(sigSlice))
         return new ReadResult("Incorrect signature!")
       
@@ -299,10 +302,10 @@ class Message {
   
   private def printType() {
     switch body {
-      Insert:   ''', type=«body.type»'''
-      Update:   ''', q=«body.quorum» index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size»'''
+      Insert:   ''', type=«body.type», replicas=«replicas.size»'''
+      Update:   ''', q=«body.quorum», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size», replicas=«replicas.size»'''
       Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
-      Reply:    ''', type=«body.type», party=(«body.party.index», «body.party.quorum»)«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
+      Reply:    ''', type=«body.type», party=«body.party»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
       Get:      ''', index=«body.index», slices=«body.slices»'''
       Error:    ''', code=«body.code», error=«body.msg»'''
     }

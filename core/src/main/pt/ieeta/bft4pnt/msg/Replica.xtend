@@ -8,10 +8,16 @@ import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
 @FinalFieldsConstructor
 class Replica implements ISection {
-  public val ArraySlice slice
+  package var ArraySlice slice = null
   
   public val Party party
   public val byte[] signature
+  
+  new (ArraySlice slice, Party party, byte[] signature) {
+    this.slice = slice
+    this.party = party
+    this.signature = signature
+  }
   
   def boolean verifySignature(PublicKey key) {
     SignatureHelper.verify(key, slice, signature)
@@ -22,10 +28,10 @@ class Replica implements ISection {
     Message.writeBytes(buf, signature)
   }
   
-  static def Replica read(ByteBuf buf, ArraySlice slice) {
+  static def Replica read(ByteBuf buf) {
     val party = Party.read(buf)
     val signature = Message.readBytes(buf)
     
-    return new Replica(slice, party, signature)
+    return new Replica(party, signature)
   }
 } 

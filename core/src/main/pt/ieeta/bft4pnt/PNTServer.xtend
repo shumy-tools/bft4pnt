@@ -24,6 +24,9 @@ import pt.ieeta.bft4pnt.spi.IStore
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.IStoreManager
 import pt.ieeta.bft4pnt.msg.Quorum
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.Set
 
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
@@ -63,12 +66,8 @@ class PNTServer {
         //TODO: adapt in order to accept replicas on quorum transition!
         // is it part of the current quorum?
         val q = db.store.currentQuorum
-        if (q.contains(msg.source)) {
-          logger.error("Not part of the quorum: ({})", msg)
-          val reply = new Message(msg.record, Error.unauthorized("Not part of the quorum!"))
-          reply.id =  msg.id
-          
-          broker.send(inetSource, reply)
+        if (!q.contains(msg.source)) {
+          logger.error("Not part of the quorum: {}", msg.source)
           return;
         }
         
@@ -79,7 +78,7 @@ class PNTServer {
       
       // is the message authorized?
       if (!authorizer.apply(msg)) {
-        logger.error("Non authorized: ({})", msg)
+        logger.error("Non authorized: {}", msg)
         val reply = new Message(msg.record, Error.unauthorized("Non authorized!"))
         reply.id =  msg.id
         
@@ -99,21 +98,25 @@ class PNTServer {
   }
   
   dispatch private def void handle(IStore cs, Message msg, Insert body, (Message)=>void reply) {
-    //process genesis quorum insert
-    if (msg.record.udi == IStoreManager.localStore && body.type == IStoreManager.quorumAlias) {
-      val genesis = msg.data.get(Quorum)
-      val party = genesis.getParty(partyKey)
-      
+    val record = cs.getRecord(msg.record.fingerprint)
+    val q = if (record === null && msg.record.udi == IStoreManager.localStore && body.type == IStoreManager.quorumAlias) {
       db.store.setAlias(msg.record.fingerprint, IStoreManager.quorumAlias)
-      cs.insert(msg)
+      msg.data.get(Quorum)
+    } else
+      db.store.currentQuorum
+    
+    // record may already exist in a replication process or client re-submission
+    val party = q.getParty(partyKey)
+    if (record !== null) {
+      logger.info("Record already exists: {}", msg.record.fingerprint)
       
-      val rep = msg.setLocalReplica(party, keys.private)
-      reply.apply(new Message(msg.record, Reply.ack(party, rep.signature)))
+      val stored = record.getCommit(0)
+      q.copyReplicas(msg, stored)
+      
+      val myRep = stored.replicas.findFirst[ rep | rep.party == party]
+      reply.apply(new Message(msg.record, Reply.ack(party, myRep.signature)))
       return;
     }
-    
-    val q = db.store.currentQuorum
-    val party = q.getParty(partyKey)
     
     val ext = extensions.get(body.type)
     val error = ext?.checkInsert(cs, msg, body)
@@ -203,22 +206,32 @@ class PNTServer {
       return;
     }
     
+    // Conflicting commits can only be overridden by other commits of higher rounds.
+    val update = record.getCommit(body.propose.index)
+    if (update !== null) {
+      val updateBody = update.body as Update
+      
+      // update may already exist in a replication process or client re-submission
+      if (updateBody.propose.fingerprint == body.propose.fingerprint && updateBody.propose.round === body.propose.round) {
+        logger.info("Update already exists: (index={}, fingerprint={}, round={})", updateBody.propose.index, updateBody.propose.fingerprint, updateBody.propose.round)
+        
+        q.copyReplicas(msg, update)
+        
+        val myRep = update.replicas.findFirst[ rep | rep.party == party]
+        reply.apply(new Message(msg.record, Reply.ack(party, body.propose, myRep.signature)))
+        return;
+      } else if (updateBody.propose.fingerprint != body.propose.fingerprint && updateBody.propose.round >= body.propose.round) {
+        reply.apply(update)
+        return;
+      }
+    }
+    
     val ext = extensions.get(record.type)
     val error = ext?.checkUpdate(cs, msg, body)
     if (error !== null) {
       logger.error("Extension constraint error (msg={})", error)
       reply.apply(new Message(msg.record, Error.constraint(error)))
       return;
-    }
-    
-    // Conflicting commits can only be overridden by other commits of higher rounds.
-    val update = record.getCommit(body.propose.index)
-    if (update !== null) {
-      val updateBody = update.body as Update
-      if (updateBody.propose.fingerprint != body.propose.fingerprint && updateBody.propose.round >= body.propose.round) {
-        reply.apply(update)
-        return;
-      }
     }
     
     // get the message quorum
@@ -270,7 +283,7 @@ class PNTServer {
         (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
       ) {
         //has (n - t) commits to override?
-        val counts = msg.countReplicas(party, db.store) + 1
+        val counts = msg.countReplicas(party, db.store)
         
         // counts are relative to the current quorum, not the message quorum
         if (counts < (q.n - q.t)) {
@@ -322,6 +335,17 @@ class PNTServer {
     
     reply.apply(commit)
   }
+  
+  private def Replica copyReplicas(Quorum current, Message from, Message to) {
+    for (rep : from.replicas) {
+      val key = current.getPartyKey(rep.party.index)
+      if (key !== null && current.index === rep.party.quorum) {
+        val thisRep = new Replica(to.sigSlice, rep.party, rep.signature)
+        if (thisRep.verifySignature(key))
+          to.addReplica(thisRep)
+      }
+    }
+  } 
 }
 
 @FinalFieldsConstructor
@@ -332,13 +356,23 @@ class Replicator {
   val MessageBroker broker
   
   var Thread job = null
+  
+  val onReplicate = new AtomicReference<(Integer, Set<Integer>, Message)=>void>
+  val onReply = new AtomicReference<(Reply)=>void>
+  
+  val active = new AtomicBoolean(false)
   val interval = new AtomicInteger(10000)
   
-  def setInterval(int secods) {
-    interval.set(1000 * secods)
+  def void setOnReplicate((Integer, Set<Integer>, Message)=>void onReplicate) {
+    this.onReplicate.set = onReplicate
   }
   
-  synchronized def isActive() { job !== null }
+  def void setOnReply((Reply)=>void onReply) {
+    this.onReply.set = onReply
+  }
+  
+  def void setInterval(int secods) { interval.set(1000 * secods) }
+  def boolean isActive() { active.get }
   
   synchronized def void start() {
     job = new Thread[
@@ -353,35 +387,54 @@ class Replicator {
     if (job !== null) {
       job.interrupt
       job = null
+      active.set = false
     }
   }
   
   synchronized def void replicate() {
+    active.set = true
     val q = db.store.currentQuorum
-    val nMt = q.n - q.t
     
-    db.store.pendingReplicas(nMt).forEach[ msg |
+    //TODO: on quorum transition it should confirm (n - t) replicas
+    val pendings = db.store.pendingReplicas(q.n)
+    
+    
+    // Process and transmit should be separated procedures. The asynchronous replies from the transmission can change the msg.replicas
+    for (msg : pendings) {
       try {
+        // process pendings
+        val toReplicate = new HashSet<Integer>
         for(party : q.allParties) {
+          //TODO: ignore parties that are non-responsive?
           val key = q.getPartyKey(party.index)
+          
           var isReplicated = false
-          for (rep : msg.replicas) {
+          val iter = msg.replicas.iterator
+          while (iter.hasNext && !isReplicated) {
+            val rep = iter.next
             val repQ = db.store.getQuorumAt(rep.party.quorum)
             val repK = repQ.getPartyKey(rep.party.index)
             if (KeyPairHelper.encode(key) == KeyPairHelper.encode(repK) && rep.verifySignature(repK))
               isReplicated = true // already replicated
           }
           
-          if (!isReplicated) {
-            val inet = q.getPartyAddress(party.index)
-            broker.send(inet, msg)
-          }
+          if (!isReplicated)
+            toReplicate.add(party.index)
+        }
+        
+        onReplicate.get?.apply(q.index, toReplicate, msg)
+        
+        // transmit pendings
+        for(party : toReplicate) {
+          logger.info("REPLICATE: {} -> {}", msg, party)
+          val inet = q.getPartyAddress(party)
+          broker.send(inet, msg)
         }
       } catch(Throwable ex) {
         ex.printStackTrace
         logger.error("Failed to replicate message: {}", msg)
       }
-    ]
+    }
   }
   
   package def void reply(Message msg) {
@@ -390,7 +443,11 @@ class Replicator {
       return;
     }
     
+    logger.info("REPLICA-REPLY: {}", msg)
+    
     val reply = (msg.body as Reply)
+    onReply.get?.apply(reply)
+    
     val q = db.store.getQuorumAt(reply.party.quorum)
     val key = q.getPartyKey(reply.party.index)
     
@@ -403,13 +460,14 @@ class Replicator {
         synchronized(cs) {
           val rec = cs.getRecord(msg.record.fingerprint)
           val stored = if (reply.propose === null) rec.getCommit(0) else rec.getCommit(reply.propose.index)
-          val rep = new Replica(stored.sigSlice, reply.party, reply.replica)
           
           // the signature will automatically verify if the replica corresponds to the stored record.
+          val rep = new Replica(stored.sigSlice, reply.party, reply.replica)
           if (rep.verifySignature(key))
             stored.addReplica(rep)
         }
       }
+      default: logger.info("REPLICA-IGNORED: {}", reply.type)
     }
   }
 }

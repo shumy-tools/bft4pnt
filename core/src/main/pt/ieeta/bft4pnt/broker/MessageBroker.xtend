@@ -5,10 +5,12 @@ import java.security.KeyPair
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
+import java.util.concurrent.atomic.AtomicReference
 
 class MessageBroker {
   static val logger = LoggerFactory.getLogger(MessageBroker.simpleName)
   
+  val lFilter = new AtomicReference<(Message)=>boolean>
   val DataBroker db
   val KeyPair keys
   
@@ -18,6 +20,10 @@ class MessageBroker {
   }
   
   def isReady() { db.ready }
+  
+  def void setLogInfoFilter((Message)=>boolean filter) {
+    lFilter.set(filter)
+  }
   
   def void start((InetSocketAddress, Message)=>void handler) {
     db.start[inetSource, data |
@@ -30,7 +36,7 @@ class MessageBroker {
           return;
         }
         
-        logger.info("MSG-RECEIVED: {} from {}", result.msg, '''«inetSource.hostString»:«inetSource.port»''')
+        log(result.msg)[logger.info("MSG-RECV: {} from {}", result.msg, '''«inetSource.hostString»:«inetSource.port»''')]
         handler.apply(inetSource, result.msg)
       } catch(Throwable ex) {
         logger.error("MSG-ERROR: {}", ex.message)
@@ -50,6 +56,12 @@ class MessageBroker {
       Thread.sleep(100)
     
     db.send(inetTarget, data)
-    logger.info("MSG-SENT: {} to {}", msg, '''«inetTarget.hostString»:«inetTarget.port»''')
+    log(msg)[logger.info("MSG-SENT: {} to {}", msg, '''«inetTarget.hostString»:«inetTarget.port»''')]
+  }
+  
+  private def log(Message msg, ()=>void log) {
+    val filter = lFilter.get
+    if (filter === null || filter.apply(msg) === true)
+      log.apply
   }
 }

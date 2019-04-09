@@ -36,4 +36,7 @@ class Party implements ISection {
   override hashCode() {
     index.hashCode + quorum.hashCode
   }
+  
+  override toString()
+    '''(«index», «quorum»)'''
 }

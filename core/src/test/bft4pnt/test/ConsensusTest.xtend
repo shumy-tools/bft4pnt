@@ -1,7 +1,9 @@
 package bft4pnt.test
 
 import bft4pnt.test.utils.InitQuorum
-import java.util.HashMap
+import java.util.Set
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import net.jodah.concurrentunit.Waiter
 import org.junit.jupiter.api.Test
@@ -14,6 +16,11 @@ import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
 
 class ConsensusTest {
+  def void assertEqualSet(Waiter waiter, Set<Integer> one, Set<Integer> two) {
+    waiter.assertTrue(one.containsAll(two))
+    waiter.assertTrue(two.containsAll(one))
+  }
+  
   def void assertError(Waiter waiter, Message reply, String msg) {
     waiter.assertTrue(reply.body instanceof Error)
     waiter.assertEquals(msg, (reply.body as Error).msg)
@@ -28,6 +35,14 @@ class ConsensusTest {
     waiter.assertTrue(reply.body instanceof Reply)
     waiter.assertEquals(Reply.Type.VOTE, (reply.body as Reply).type)
     waiter.assertEquals(round, (reply.body as Reply).propose.round)
+  }
+  
+  def void assertInsert(Waiter waiter, Message reply, String rec, String type) {
+    waiter.assertTrue(reply.body instanceof Insert)
+    waiter.assertEquals(rec, reply.record.fingerprint)
+    val insert = reply.body as Insert
+    
+    waiter.assertEquals(type, insert.type)
   }
   
   def void assertUpdate(Waiter waiter, Message reply, String rec, Propose propose) {
@@ -52,6 +67,7 @@ class ConsensusTest {
         x1Ua  1Ua   x1Pa
     */
     
+    val ok = new AtomicBoolean(false)
     val waiter = new Waiter
     val counter = new AtomicInteger(0)
     val net  = InitQuorum.init(3000, 4, 1)
@@ -62,7 +78,7 @@ class ConsensusTest {
     val insert = Insert.create(1L, udi, "test", new Data("data-i"))
     val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 2L)
     
-    val voteReplies = new HashMap<Integer, Message>
+    val voteReplies = new ConcurrentHashMap<Integer, Message>
     net.start([ party, reply |
       if (reply.id == 1L)
         net.send(party, pa1)
@@ -103,14 +119,18 @@ class ConsensusTest {
         counter.incrementAndGet
       }
       
-      if (counter.get == 3)
+      if (counter.get == 3) {
+        ok.set = true
         waiter.resume
+      }
+      
     ], [
       for (party : 1 .. 4)
         net.send(party, insert)
     ])
     
-    waiter.await(2000)
+    waiter.await(4000)
+    waiter.assertTrue(ok.get)
   }
   
   @Test
@@ -122,6 +142,8 @@ class ConsensusTest {
         1Ua   1Ua   1Ua
         x2Pb              x1Pa
     */
+    
+    val ok = new AtomicBoolean(false)
     val waiter = new Waiter
     val counter = new AtomicInteger(0)
     val net  = InitQuorum.init(3005, 4, 1)
@@ -134,7 +156,7 @@ class ConsensusTest {
     val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
     val pb2 = Propose.create(4L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
     
-    val voteReplies = new HashMap<Integer, Message>
+    val voteReplies = new ConcurrentHashMap<Integer, Message>
     net.start([ party, reply |
       if (reply.id == 1L && #[1,2,3].contains(party))
         net.send(party, pa1)
@@ -179,14 +201,18 @@ class ConsensusTest {
         counter.incrementAndGet
       }
       
-      if (counter.get == 4)
+      if (counter.get == 4) {
+        ok.set = true
         waiter.resume
+      }
+      
     ], [
       for (party : 1 .. 4)
         net.send(party, insert)
     ])
     
-    waiter.await(2000)
+    waiter.await(4000)
+    waiter.assertTrue(ok.get)
   }
   
   @Test
@@ -200,6 +226,8 @@ class ConsensusTest {
         3Pa   3Pa   3Pa
         3Ua   3Ua   3Ua   3Ua
     */
+    
+    val ok = new AtomicBoolean(false)
     val waiter = new Waiter
     val counter = new AtomicInteger(0)
     val net  = InitQuorum.init(3010, 4, 1)
@@ -213,7 +241,7 @@ class ConsensusTest {
     val pb2 = Propose.create(3L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
     val pa3 = Propose.create(5L, udi, insert.record.fingerprint, d1.fingerprint, 1, 3L)
     
-    val voteReplies = new HashMap<Integer, Message>
+    val voteReplies = new ConcurrentHashMap<Integer, Message>
     net.start([ party, reply |
       if (reply.id == 1L && #[1,2,3].contains(party))
         net.send(party, pa1)
@@ -275,13 +303,146 @@ class ConsensusTest {
         counter.incrementAndGet
       }
       
-      if (counter.get == 9)
+      if (counter.get == 9) {
+        ok.set = true
         waiter.resume
+      }
+      
     ], [
       for (party : 1 .. 4)
         net.send(party, insert)
     ])
     
-    waiter.await(2000)
+    waiter.await(4000)
+    waiter.assertTrue(ok.get)
   }
+  
+    @Test
+  def void testReplication() {
+    /*  1     2     3     4
+        1Pa   1Pa   1Pa   2Pb
+        1Ua   1Ua   
+    R               1Ua   1Ua(3-msgs)
+    */
+    
+    val ok = new AtomicBoolean(false)
+    val waiter = new Waiter
+    val counter = new AtomicInteger(0)
+    val net  = InitQuorum.init(3015, 4, 1)
+    
+    val udi = "udi-1"
+    val d1 = new Data("d1")
+    val d2 = new Data("d2")
+    
+    val insert = Insert.create(1L, udi, "test", new Data("data-i"))
+    val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
+    val pb2 = Propose.create(2L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
+    
+    net.replicator(1).onReplicate = [ quorum, parties, msg |
+      if (msg.id > 0L) {
+        waiter.assertEquals(insert.record.fingerprint, msg.record.fingerprint)
+        waiter.assertEqualSet(parties, #{2,3,4})
+        counter.incrementAndGet
+        println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+      }
+    ]
+    
+    net.replicator(1).onReply = [
+      if (party.index == 4 && type == Reply.Type.VOTE)
+        counter.incrementAndGet
+      
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 15) {
+        println('''----------------START-REP 2----------------''')
+        net.replicator(2).replicate
+      }
+    ]
+    
+    net.replicator(2).onReplicate = [ quorum, parties, msg |
+      if (msg.id > 0L) {
+        waiter.assertEquals(insert.record.fingerprint, msg.record.fingerprint)
+        waiter.assertEqualSet(parties, #{3,4})
+        counter.incrementAndGet
+        println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+      }
+    ]
+    
+    net.replicator(2).onReply = [
+      if (party.index == 4 && type == Reply.Type.VOTE)
+        counter.incrementAndGet
+      
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 24) {
+        println('''----------------START-REP 3----------------''')
+        net.replicator(3).replicate
+      }
+    ]
+    
+    net.replicator(3).onReplicate = [ quorum, parties, msg |
+      if (msg.id > 0L) {
+        waiter.assertEquals(insert.record.fingerprint, msg.record.fingerprint)
+        waiter.assertEqualSet(parties, #{4})
+        counter.incrementAndGet
+        println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+      }
+    ]
+    
+    net.replicator(3).onReply = [
+      waiter.assertTrue(type != Reply.Type.VOTE)
+      
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 29) {
+        ok.set = true
+        waiter.resume
+      }
+    ]
+    
+    val updateReplies = new AtomicInteger(0)
+    val voteReplies = new ConcurrentHashMap<Integer, Message>
+    net.start([ party, reply |
+      if (reply.id == 1L && #[1,2,3].contains(party))
+        net.send(party, pa1)
+      
+      if (reply.id == 1L && #[4].contains(party))
+        net.send(party, pb2)
+      
+      if (reply.id == 2L && #[1,2,3].contains(party)) {
+        waiter.assertVote(reply, 1L)
+        val rVote = reply.body as Reply
+        
+        voteReplies.put(rVote.party.index, reply)
+        if (voteReplies.size == 3) {
+          val ua1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
+          for (sendTo : 1 .. 2)
+            net.send(sendTo, ua1)
+          voteReplies.clear
+        }
+      }
+      
+      if (reply.id == 2L && #[4].contains(party)) {
+        waiter.assertVote(reply, 2L)
+        counter.incrementAndGet
+      }
+      
+      if (reply.id == 3L && #[1,2].contains(party)) {
+        waiter.assertAck(reply)
+        counter.incrementAndGet
+        
+        if (updateReplies.incrementAndGet == 2) {
+          println('''----------------START-REP 1----------------''')
+          net.replicator(1).replicate
+        }
+      }
+    ], [
+      for (party : 1 .. 4)
+        net.send(party, insert)
+    ])
+    
+    waiter.await(4000)
+    waiter.assertTrue(ok.get)
+  }
+  
 }
