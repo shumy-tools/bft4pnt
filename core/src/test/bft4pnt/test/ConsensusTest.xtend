@@ -14,6 +14,7 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
+import java.util.concurrent.atomic.AtomicReference
 
 class ConsensusTest {
   def void assertEqualSet(Waiter waiter, Set<Integer> one, Set<Integer> two) {
@@ -62,9 +63,11 @@ class ConsensusTest {
   
   @Test
   def void testBasicInsertUpdate() {
-    /*  1     2     3     4
-        2Pa   2Pa   2Pa   2Pa
-        x1Ua  1Ua   x1Pa
+    // Proposals can only be overridden by other proposals of higher rounds.
+    // An update commit is only valid if it has n -t votes from different parties for the same proposal.
+    /*  1              2     3     4
+        2Pa            2Pa   2Pa   2Pa
+        x2Ua(2-votes)  2Ua   x1Pa
     */
     
     val ok = new AtomicBoolean(false)
@@ -90,12 +93,13 @@ class ConsensusTest {
         voteReplies.put(rVote.party.index, reply)
         
         if (voteReplies.size == 2) {
+          // update has not enough votes
           val u1 = Update.create(3L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
           net.send(party, u1)
         }
         
         if (voteReplies.size == 3) {
-          // should ignore lower rounds
+          // should ignore proposals with lower rounds
           val p2 = Propose.create(4L, udi, insert.record.fingerprint, "data-3", 1, 1L)
           net.send(party, p2)
           
@@ -217,14 +221,18 @@ class ConsensusTest {
   
   @Test
   def void testHigherRound() {
-    // Commits can accept concurrent proposals of higher rounds for the same value.
+    // Proposals can only be overridden by other proposals of higher rounds.
+    // Commits can have concurrent proposals of higher rounds for the same value.
     // Proposals can be overridden by commits of the same or higher rounds.
+    // Conflicting commits can only be overridden by other commits of higher rounds.
+    // On receiving a conflicting commit it should reply with the commit of higher round.
     /*  1     2     3     4
         1Pa   1Pa   1Pa   
                     2Pb   2Pb
         1Ua   1Ua   x1Ua  
         3Pa   3Pa   3Pa
         3Ua   3Ua   3Ua   3Ua
+        x1Ua              x1Ua
     */
     
     val ok = new AtomicBoolean(false)
@@ -240,6 +248,8 @@ class ConsensusTest {
     val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
     val pb2 = Propose.create(3L, udi, insert.record.fingerprint, d2.fingerprint, 1, 2L)
     val pa3 = Propose.create(5L, udi, insert.record.fingerprint, d1.fingerprint, 1, 3L)
+    val ua1 = new AtomicReference<Message>
+    val ua2 = new AtomicReference<Message>
     
     val voteReplies = new ConcurrentHashMap<Integer, Message>
     net.start([ party, reply |
@@ -256,9 +266,9 @@ class ConsensusTest {
         if (rVote.propose.round == 1) {
           voteReplies.put(rVote.party.index, reply)
           if (voteReplies.size == 3) {
-            val ua1 = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
+            ua1.set = Update.create(4L, udi, insert.record.fingerprint, 0, pa1.body as Propose, voteReplies, d1)
             for (sendTo : 1 .. 3)
-              net.send(sendTo, ua1)
+              net.send(sendTo, ua1.get)
             voteReplies.clear
           }
         }
@@ -286,9 +296,9 @@ class ConsensusTest {
         val rVote = reply.body as Reply
         voteReplies.put(rVote.party.index, reply)
         if (voteReplies.size == 3) {
-          val ua2 = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies, d1)
+          ua2.set = Update.create(6L, udi, insert.record.fingerprint, 0, pa3.body as Propose, voteReplies, d1)
           for (sendTo : 1 .. 4)
-            net.send(sendTo, ua2)
+            net.send(sendTo, ua2.get)
           voteReplies.clear
         }
       }
@@ -304,6 +314,18 @@ class ConsensusTest {
       }
       
       if (counter.get == 9) {
+        counter.incrementAndGet
+        ua1.get.id = 7L
+        net.send(1, ua1.get)
+        net.send(4, ua1.get)
+      }
+      
+      if (reply.id == 7L && #[1,4].contains(party)) {
+        waiter.assertUpdate(reply, insert.record.fingerprint, pa3.body as Propose)
+        counter.incrementAndGet
+      }
+      
+      if (counter.get == 12) {
         ok.set = true
         waiter.resume
       }
@@ -317,12 +339,13 @@ class ConsensusTest {
     waiter.assertTrue(ok.get)
   }
   
-    @Test
+  @Test
   def void testReplication() {
+    // Proposals can be overridden by (n - t) commits from lower rounds, otherwise it should reply with a vote.
     /*  1     2     3     4
         1Pa   1Pa   1Pa   2Pb
         1Ua   1Ua   
-    R               1Ua   1Ua(3-msgs)
+    R               1Ua   1Ua(n - t)
     */
     
     val ok = new AtomicBoolean(false)

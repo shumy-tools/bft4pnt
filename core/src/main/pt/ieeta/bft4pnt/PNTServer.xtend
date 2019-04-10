@@ -105,11 +105,12 @@ class PNTServer {
     } else
       db.store.currentQuorum
     
-    // record may already exist in a replication process or client re-submission
+    // the record may already exist in a replication process or client re-submission
     val party = q.getParty(partyKey)
     if (record !== null) {
       logger.info("Record already exists: {}", msg.record.fingerprint)
       
+      // proceed to up-date the local representation of the commit message with the new replicas of the received message
       val stored = record.getCommit(0)
       q.copyReplicas(msg, stored)
       
@@ -215,12 +216,14 @@ class PNTServer {
       if (updateBody.propose.fingerprint == body.propose.fingerprint && updateBody.propose.round === body.propose.round) {
         logger.info("Update already exists: (index={}, fingerprint={}, round={})", updateBody.propose.index, updateBody.propose.fingerprint, updateBody.propose.round)
         
+        // proceed to up-date the local representation of the commit message with the new replicas of the received message
         q.copyReplicas(msg, update)
         
         val myRep = update.replicas.findFirst[ rep | rep.party == party]
         reply.apply(new Message(msg.record, Reply.ack(party, body.propose, myRep.signature)))
         return;
-      } else if (updateBody.propose.fingerprint != body.propose.fingerprint && updateBody.propose.round >= body.propose.round) {
+      } else if (updateBody.propose.round >= body.propose.round) {
+        // doesn't accept the commit even if the Dk fingerprint is the same. The correct round should be replicated otherwise the replica signature will fail.
         reply.apply(update)
         return;
       }
@@ -282,10 +285,9 @@ class PNTServer {
       if (currentBody.propose.round > body.propose.round &&
         (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
       ) {
-        //has (n - t) commits to override?
+        // (n - t) replicas in the current quorum define a finalized commit and can override any propose rules
+        // msg.countReplicas verify each replica signature. No need for further verifications.
         val counts = msg.countReplicas(party, db.store)
-        
-        // counts are relative to the current quorum, not the message quorum
         if (counts < (q.n - q.t)) {
           reply.apply(current)
           return;

@@ -17,6 +17,7 @@ import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.IStoreManager
 import java.util.List
+import java.util.concurrent.atomic.AtomicBoolean
 
 @FinalFieldsConstructor
 class InitQuorum {
@@ -70,15 +71,17 @@ class InitQuorum {
     client.send(quorum.getPartyAddress(party), msg)
   }
   
+  val testStarted = new AtomicBoolean(false)
   def void start((Integer, Message)=>void handler, ()=>void startTest) {
     val counter = new AtomicInteger(0)
     client.start[ inetSource, reply |
       if (counter.incrementAndGet === quorum.n) {
+        testStarted.set = true
         println("Quorum set, starting test.")
         startTest.apply
       }
       
-      if (reply.id > 0L)
+      if (testStarted.get)
         handler.apply(inetSource.port - port, reply)
     ]
     

@@ -66,11 +66,6 @@ class Data implements ISection {
     }
   }
   
-  /*def verify(String key, Slices slices) {
-    //TODO: verify slices?
-    return true
-  }*/
-  
   override write(ByteBuf buf) {
     buf.writeShort(type.ordinal)
     
