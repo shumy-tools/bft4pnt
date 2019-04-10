@@ -66,6 +66,10 @@ class Data implements ISection {
     }
   }
   
+  def sliceFingerprint(int size, int index) {
+    //TODO: get slice fingerprint
+  }
+  
   override write(ByteBuf buf) {
     buf.writeShort(type.ordinal)
     

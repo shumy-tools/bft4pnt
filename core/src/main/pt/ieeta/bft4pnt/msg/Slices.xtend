@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf
 import java.util.ArrayList
 import java.util.List
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import java.util.Collections
 
 @FinalFieldsConstructor
 class Slices implements ISection {
@@ -12,7 +13,7 @@ class Slices implements ISection {
   
   new() {
     this.size = 0
-    this.slices = null
+    this.slices = Collections.EMPTY_LIST
   }
   
   override write(ByteBuf buf) {

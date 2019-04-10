@@ -27,6 +27,7 @@ import pt.ieeta.bft4pnt.msg.Quorum
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.Set
+import pt.ieeta.bft4pnt.msg.Slices
 
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
@@ -139,7 +140,12 @@ class PNTServer {
           return;
         }
         
-        //TODO: verify slices?
+        // verify slices
+        if (!body.slices.areSlicesOK(msg.data)) {
+          logger.error("Invalid slice fingerprints!")
+          reply.apply(new Message(msg.record, Error.invalid("Invalid slice fingerprints!")))
+          return;
+        }
         
         //execute insert extension
         val rep = msg.setLocalReplica(party, keys.private)
@@ -308,7 +314,12 @@ class PNTServer {
           return;
         }
         
-        //TODO: verify slices?
+        // verify slices
+        if (!body.slices.areSlicesOK(msg.data)) {
+          logger.error("Invalid slice fingerprints!")
+          reply.apply(new Message(msg.record, Error.invalid("Invalid slice fingerprints!")))
+          return;
+        }
         
         //execute update extension
         val rep = msg.setLocalReplica(party, keys.private)
@@ -336,6 +347,17 @@ class PNTServer {
     }
     
     reply.apply(commit)
+  }
+  
+  private def boolean areSlicesOK(Slices slices, Data data) {
+    var index = 0
+    for (slice : slices.slices) {
+      if (data.sliceFingerprint(slices.size, index) != slice)
+        return false
+      index++
+    }
+    
+    return true
   }
   
   private def Replica copyReplicas(Quorum current, Message from, Message to) {

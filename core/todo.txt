@@ -1,3 +1,10 @@
-1) Compress and encrypt data on transit?
-2) Do I really need to send the quorum configuration? Or do I just need to confirm that the message is part of the quorum?
-3) Should I replace message id to round?
+--TODO--
+ * Compress and encrypt data on transit?
+ * Should I replace message id with round?
+ * Implement data streams
+ * Improve Data class and file storage
+ 
+--Unit Test--
+ * Slices
+ * Reads
+ * Quorum updates
