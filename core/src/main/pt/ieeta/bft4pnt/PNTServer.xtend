@@ -64,8 +64,8 @@ class PNTServer {
       // clients do not send replies or errors, redirect to replicator
       if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
         
-        //TODO: adapt in order to accept replicas on quorum transition!
-        // is it part of the current quorum?
+        //TODO: adapt to accept parties from the last quorum on quorum transition
+        // is the reply party part of the current quorum?
         val q = db.store.currentQuorum
         if (!q.contains(msg.source)) {
           logger.error("Not part of the quorum: {}", msg.source)
@@ -120,14 +120,6 @@ class PNTServer {
       return;
     }
     
-    val ext = extensions.get(body.type)
-    val error = ext?.checkInsert(cs, msg, body)
-    if (error !== null) {
-      logger.error("Extension constraint error (msg={})", error)
-      reply.apply(new Message(msg.record, Error.constraint(error)))
-      return;
-    }
-    
     val has = msg.data.has(msg.record.fingerprint)
     switch has {
       case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party)))
@@ -147,7 +139,16 @@ class PNTServer {
           return;
         }
         
-        //execute insert extension
+        // check extension constraints
+        val ext = extensions.get(body.type)
+        val error = ext?.checkInsert(cs, msg, body)
+        if (error !== null) {
+          logger.error("Extension constraint error (msg={})", error)
+          reply.apply(new Message(msg.record, Error.constraint(error)))
+          return;
+        }
+        
+        // execute insert extension
         val rep = msg.setLocalReplica(party, keys.private)
         if (ext === null || ext.insert(cs, msg))
           cs.insert(msg)
@@ -161,7 +162,7 @@ class PNTServer {
     val q = db.store.currentQuorum
     val party = q.getParty(partyKey)
     
-    // Record must exist
+    // record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
       logger.error("Non existent record (propose, rec={})", msg.record.fingerprint)
@@ -169,14 +170,14 @@ class PNTServer {
       return;
     }
     
-    // Parties only accept proposals if messages for all past fingerprints exist.
+    // parties only accept proposals if messages for all past fingerprints exist.
     if (body.index > record.lastIndex + 1) {
       logger.error("Non existent past commits (index={}, last={})", body.index, record.lastCommit)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent past commits!")))
       return;
     }
     
-    //Commits can have concurrent proposals of higher rounds for the same value.
+    // commits can have concurrent proposals of higher rounds for the same value.
     val update = record.getCommit(body.index)
     if (update !== null) {
       val updateBody = update.body as Update
@@ -186,7 +187,7 @@ class PNTServer {
       }
     }
     
-    // Proposals can only be overridden by other proposals of higher rounds.
+    // proposals can only be overridden by other proposals of higher rounds.
     val current = record.vote
     if (current !== null) {
       val currentBody = current.body as Reply
@@ -205,41 +206,11 @@ class PNTServer {
     val q = db.store.currentQuorum
     val party = q.getParty(partyKey)
     
-    // Record must exist
+    // record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
       logger.error("Non existent record (update, rec={})", msg.record.fingerprint)
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
-      return;
-    }
-    
-    // Conflicting commits can only be overridden by other commits of higher rounds.
-    val update = record.getCommit(body.propose.index)
-    if (update !== null) {
-      val updateBody = update.body as Update
-      
-      // update may already exist in a replication process or client re-submission
-      if (updateBody.propose.fingerprint == body.propose.fingerprint && updateBody.propose.round === body.propose.round) {
-        logger.info("Update already exists: (index={}, fingerprint={}, round={})", updateBody.propose.index, updateBody.propose.fingerprint, updateBody.propose.round)
-        
-        // proceed to up-date the local representation of the commit message with the new replicas of the received message
-        q.copyReplicas(msg, update)
-        
-        val myRep = update.replicas.findFirst[ rep | rep.party == party]
-        reply.apply(new Message(msg.record, Reply.ack(party, body.propose, myRep.signature)))
-        return;
-      } else if (updateBody.propose.round >= body.propose.round) {
-        // doesn't accept the commit even if the Dk fingerprint is the same. The correct round should be replicated otherwise the replica signature will fail.
-        reply.apply(update)
-        return;
-      }
-    }
-    
-    val ext = extensions.get(record.type)
-    val error = ext?.checkUpdate(cs, msg, body)
-    if (error !== null) {
-      logger.error("Extension constraint error (msg={})", error)
-      reply.apply(new Message(msg.record, Error.constraint(error)))
       return;
     }
     
@@ -251,12 +222,12 @@ class PNTServer {
       return;
     } 
     
-    // Votes with valid signatures with the exact same content structure (F, C, Ik, Dk, Ra)?
+    // votes with valid signatures with the exact same content structure?
     val parties = new HashSet<Integer>
     for (vote : body.votes) {
       parties.add(vote.party)
       
-      // An update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
+      // an update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
       val rVote = Reply.vote(new Party(vote.party, body.quorum), body.propose)
       val vMsg = new Message(msg.version, msg.record, rVote)
       val data = Message.getSignedBlock(vMsg.write)
@@ -282,26 +253,48 @@ class PNTServer {
       return;
     }
     
-    // Proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
-    val current = record.vote
-    if (current !== null) {
-      val currentBody = current.body as Reply
+    // conflicting commits can only be overridden by other commits of higher rounds.
+    val update = record.getCommit(body.propose.index)
+    if (update !== null) {
+      val updateBody = update.body as Update
       
-      // Proposals can only be overridden by commits of the same or higher rounds
-      if (currentBody.propose.round > body.propose.round &&
-        (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
-      ) {
-        // (n - t) replicas in the current quorum define a finalized commit and can override any propose rules
-        // msg.countReplicas verify each replica signature. No need for further verifications.
-        val counts = msg.countReplicas(party, db.store)
-        if (counts < (q.n - q.t)) {
-          reply.apply(current)
-          return;
+      // update may already exist in a replication process or client re-submission
+      if (updateBody.propose.fingerprint == body.propose.fingerprint && updateBody.propose.round === body.propose.round) {
+        logger.info("Update already exists: (index={}, fingerprint={}, round={})", updateBody.propose.index, updateBody.propose.fingerprint, updateBody.propose.round)
+        
+        // proceed to up-date the local representation of the commit message with the new replicas of the received message
+        q.copyReplicas(msg, update)
+        
+        val myRep = update.replicas.findFirst[ rep | rep.party == party]
+        reply.apply(new Message(msg.record, Reply.ack(party, body.propose, myRep.signature)))
+        return;
+      } else if (updateBody.propose.round >= body.propose.round) {
+        // doesn't accept the commit even if the Dk fingerprint is the same. The correct round should be replicated otherwise the replica signature will fail.
+        reply.apply(update)
+        return;
+      }
+    } else { // ignore propose rules if it already has a commit that can be overridden
+      // proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
+      val current = record.vote
+      if (current !== null) {
+        val currentBody = current.body as Reply
+        
+        // proposals can only be overridden by commits of the same or higher rounds
+        if (currentBody.propose.round > body.propose.round &&
+          (currentBody.propose.index != body.propose.index || currentBody.propose.fingerprint != body.propose.fingerprint) //Cannot directly accept commits for different proposals
+        ) {
+          // (n - t) replicas in the current quorum define a finalized commit and can override any propose rules
+          // msg.countReplicas verify each replica signature. No need for further verifications.
+          val counts = msg.countReplicas(party, db.store) + 1 // ignore the possibility of existing a local replica and then count with itself
+          if (counts < (q.n - q.t)) {
+            reply.apply(current)
+            return;
+          }
         }
       }
     }
     
-    // Parties only accept proposals if the data for the current fingerprint is safe in the local storage.
+    // parties only accept proposals if the data for the current fingerprint is safe in the local storage.
     val has = msg.data.has(body.propose.fingerprint)
     switch has {
       case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(party, body.propose)))
@@ -321,7 +314,16 @@ class PNTServer {
           return;
         }
         
-        //execute update extension
+        // check extension constraints
+        val ext = extensions.get(record.type)
+        val error = ext?.checkUpdate(cs, msg, body)
+        if (error !== null) {
+          logger.error("Extension constraint error (msg={})", error)
+          reply.apply(new Message(msg.record, Error.constraint(error)))
+          return;
+        }
+        
+        // execute update extension
         val rep = msg.setLocalReplica(party, keys.private)
         if (ext === null || ext.update(cs, msg))
           record.update(msg)
@@ -332,7 +334,7 @@ class PNTServer {
   }
   
   dispatch private def void handle(IStore cs, Message msg, Get body, (Message)=>void reply) {
-    // Record must exist
+    // record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
       logger.error("Non existent record (get, rec={})", msg.record.fingerprint)
@@ -423,7 +425,7 @@ class Replicator {
     val pendings = db.store.pendingReplicas(q.n)
     
     
-    // Process and transmit should be separated procedures. The asynchronous replies from the transmission can change the msg.replicas
+    // process and transmit should be separated procedures. The asynchronous replies from the transmission can change the msg.replicas
     for (msg : pendings) {
       try {
         // process pendings

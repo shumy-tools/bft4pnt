@@ -12,7 +12,7 @@ class Reply implements ISection {
   public val Party party
   
   public val Propose propose
-  public val byte[] replica
+  public val byte[] replica // is the signature of the (insert, update) message
   
   static def Reply vote(Party party, Propose propose) {
     return new Reply(Type.VOTE, party, propose, null)

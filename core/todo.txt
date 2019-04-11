@@ -8,3 +8,6 @@
  * Slices
  * Reads
  * Quorum updates
+ 
+ --Possible improvements--
+ * Can we use a proposal for each store instead of each record? 
