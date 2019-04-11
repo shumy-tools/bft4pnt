@@ -10,18 +10,25 @@ abstract class IStoreManager {
   public static val localStore = "admin"
   public static val quorumAlias = "quorum"
   
-  synchronized def Quorum getCurrentQuorum() {
-    val qRec = local.getRecord(getRecordFromAlias(quorumAlias))
+  private def IRecord getQuorumRecord() {
+    val qRecAlias = local.getRecordFromAlias(quorumAlias)
+    if (qRecAlias === null)
+      throw new RuntimeException('''No quorum record alias!''')
+    
+    val qRec = local.getRecord(qRecAlias)
     if (qRec === null)
       throw new RuntimeException('''No quorum record!''')
-    
+      
+    qRec
+  }
+  
+  synchronized def Quorum getCurrentQuorum() {
+    val qRec = getQuorumRecord()
     getQuorumAt(qRec.lastIndex)
   }
   
   synchronized def Quorum getQuorumAt(int index) {
-    val qRec = local.getRecord(getRecordFromAlias(quorumAlias))
-    if (qRec === null)
-      throw new RuntimeException('''No quorum record!''')
+    val qRec = getQuorumRecord()
     
     val qMsg = qRec.getCommit(index)
     if (qMsg === null)
@@ -36,14 +43,14 @@ abstract class IStoreManager {
   
   def local() { getOrCreate(localStore) }
   
-  def void setAlias(String record, String alias)
-  def String getRecordFromAlias(String alias)
-  
   def List<Message> pendingReplicas(int minimum)
   def IStore getOrCreate(String udi)
 }
 
 interface IStore {
+  def void setAlias(String record, String alias)
+  def String getRecordFromAlias(String alias)
+  
   def IRecord insert(Message msg)
   def IRecord getRecord(String record)
 }

@@ -72,14 +72,9 @@ class RepTable {
 
 class InMemoryStoreMng extends IStoreManager {
   val RepTable repTable
-  
-  val alias = new ConcurrentHashMap<String, String>
   val stores = new ConcurrentHashMap<String, IStore>
   
   new() { repTable = new RepTable(this) }
-  
-  override setAlias(String record, String alias) { this.alias.put(alias, record) }
-  override getRecordFromAlias(String alias) { this.alias.get(alias) }
   
   override pendingReplicas(int minimum) {
     repTable.get(minimum)
@@ -97,7 +92,12 @@ class InMemoryStoreMng extends IStoreManager {
 @FinalFieldsConstructor
 class InMemoryStore implements IStore {
   val RepTable repTable
+  
+  val alias = new ConcurrentHashMap<String, String>
   val records = new HashMap<String, IRecord>
+  
+  override setAlias(String record, String alias) { this.alias.put(alias, record) }
+  override getRecordFromAlias(String alias) { this.alias.get(alias) }
   
   override insert(Message msg) {
     return new InMemoryRecord(repTable) => [

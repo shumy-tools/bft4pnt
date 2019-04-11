@@ -101,7 +101,7 @@ class PNTServer {
   dispatch private def void handle(IStore cs, Message msg, Insert body, (Message)=>void reply) {
     val record = cs.getRecord(msg.record.fingerprint)
     val q = if (record === null && msg.record.udi == IStoreManager.localStore && body.type == IStoreManager.quorumAlias) {
-      db.store.setAlias(msg.record.fingerprint, IStoreManager.quorumAlias)
+      cs.setAlias(msg.record.fingerprint, IStoreManager.quorumAlias)
       msg.data.get(Quorum)
     } else
       db.store.currentQuorum
@@ -185,15 +185,15 @@ class PNTServer {
         reply.apply(update)
         return;
       }
-    }
-    
-    // proposals can only be overridden by other proposals of higher rounds.
-    val current = record.vote
-    if (current !== null) {
-      val currentBody = current.body as Reply
-      if (currentBody.propose.round >= body.round) {
-        reply.apply(current)
-        return;
+    } else { // ignore propose rules if it already has a commit
+      // proposals can only be overridden by other proposals of higher rounds.
+      val current = record.vote
+      if (current !== null) {
+        val currentBody = current.body as Reply
+        if (currentBody.propose.round >= body.round) {
+          reply.apply(current)
+          return;
+        }
       }
     }
     
@@ -273,7 +273,7 @@ class PNTServer {
         reply.apply(update)
         return;
       }
-    } else { // ignore propose rules if it already has a commit that can be overridden
+    } else { // ignore propose rules if it already has a commit
       // proposals can be overridden by commits of the same or higher rounds, or (n−t) commits from lower rounds.
       val current = record.vote
       if (current !== null) {
