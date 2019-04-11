@@ -100,8 +100,8 @@ class PNTServer {
   
   dispatch private def void handle(Store cs, Message msg, Insert body, (Message)=>void reply) {
     val record = cs.getRecord(msg.record.fingerprint)
-    val q = if (record === null && msg.record.udi == StoreManager.localStore && body.type == StoreManager.quorumAlias) {
-      cs.setAlias(msg.record.fingerprint, StoreManager.quorumAlias)
+    val q = if (record === null && msg.record.udi == StoreManager.LOCAL_STORE && body.type == Store.QUORUM_ALIAS) {
+      cs.setAlias(msg.record.fingerprint, Store.QUORUM_ALIAS)
       msg.data.get(Quorum)
     } else
       db.store.currentQuorum

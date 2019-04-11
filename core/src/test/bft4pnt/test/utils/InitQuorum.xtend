@@ -4,6 +4,8 @@ import java.net.InetSocketAddress
 import java.security.KeyPair
 import java.security.Security
 import java.util.ArrayList
+import java.util.List
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
@@ -15,8 +17,7 @@ import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.spi.PntDatabase
-import java.util.List
-import java.util.concurrent.atomic.AtomicBoolean
+import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
 
 @FinalFieldsConstructor
@@ -86,7 +87,7 @@ class InitQuorum {
     ]
     
     // set quorum config
-    val insert = Insert.create(0L, StoreManager.localStore, StoreManager.quorumAlias, new Data(quorum))
+    val insert = Insert.create(0L, StoreManager.LOCAL_STORE, Store.QUORUM_ALIAS, new Data(quorum))
     for (party : 1 .. quorum.n)
       send(party, insert)
   }

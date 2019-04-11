@@ -7,16 +7,15 @@ import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.msg.Update
 
 abstract class StoreManager {
-  public static val localStore = "admin"
-  public static val quorumAlias = "quorum"
+  public static val LOCAL_STORE = "admin"
   
   synchronized def Quorum getCurrentQuorum() {
-    val qRec = local.getRecordFromAlias(quorumAlias)
+    val qRec = local.getRecordFromAlias(Store.QUORUM_ALIAS)
     getQuorumAt(qRec.lastIndex)
   }
   
   synchronized def Quorum getQuorumAt(int index) {
-    val qRec = local.getRecordFromAlias(quorumAlias)
+    val qRec = local.getRecordFromAlias(Store.QUORUM_ALIAS)
     
     val qMsg = qRec.getCommit(index)
     if (qMsg === null)
@@ -29,13 +28,15 @@ abstract class StoreManager {
     return q
   }
   
-  def local() { getOrCreate(localStore) }
+  def local() { getOrCreate(LOCAL_STORE) }
   
   def List<Message> pendingReplicas(int minimum)
   def Store getOrCreate(String udi)
 }
 
 abstract class Store {
+  public static val QUORUM_ALIAS = "quorum"
+  
   def StoreRecord getRecordFromAlias(String alias) {
     val record = getFromAlias(alias)
     if (record === null)
