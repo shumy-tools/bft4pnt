@@ -9,9 +9,9 @@ import org.eclipse.xtend.lib.annotations.Accessors
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Update
-import pt.ieeta.bft4pnt.spi.IRecord
-import pt.ieeta.bft4pnt.spi.IStore
-import pt.ieeta.bft4pnt.spi.IStoreManager
+import pt.ieeta.bft4pnt.spi.Store
+import pt.ieeta.bft4pnt.spi.StoreManager
+import pt.ieeta.bft4pnt.spi.StoreRecord
 
 // Real implementations should carefully craft this class. There are several optimizations that can be done here.
 @FinalFieldsConstructor
@@ -70,9 +70,9 @@ class RepTable {
   }
 }
 
-class InMemoryStoreMng extends IStoreManager {
+class InMemoryStoreMng extends StoreManager {
   val RepTable repTable
-  val stores = new ConcurrentHashMap<String, IStore>
+  val stores = new ConcurrentHashMap<String, Store>
   
   new() { repTable = new RepTable(this) }
   
@@ -90,17 +90,17 @@ class InMemoryStoreMng extends IStoreManager {
 }
 
 @FinalFieldsConstructor
-class InMemoryStore implements IStore {
+class InMemoryStore extends Store {
   val RepTable repTable
   
   val alias = new ConcurrentHashMap<String, String>
-  val records = new HashMap<String, IRecord>
+  val records = new HashMap<String, StoreRecord>
   
   override setAlias(String record, String alias) { this.alias.put(alias, record) }
-  override getRecordFromAlias(String alias) { this.alias.get(alias) }
+  override getFromAlias(String alias) { this.alias.get(alias) }
   
   override insert(Message msg) {
-    return new InMemoryRecord(repTable) => [
+    return new InMemoryStoreRecord(repTable) => [
       records.put(msg.record.fingerprint, it)
       addHistory(msg)
     ]
@@ -112,7 +112,7 @@ class InMemoryStore implements IStore {
 }
 
 @FinalFieldsConstructor
-class InMemoryRecord extends IRecord {
+class InMemoryStoreRecord extends StoreRecord {
   val RepTable repTable
   
   @Accessors var Message vote

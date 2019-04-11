@@ -10,4 +10,5 @@
  * Quorum updates
  
  --Possible improvements--
- * Can we use a proposal for each store instead of each record? 
+ * Can we use a proposal for each store instead of each record?
+ * Change the thread model using an asynchronous message processor? Also change the SPI to asynchronous?

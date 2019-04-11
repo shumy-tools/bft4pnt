@@ -6,29 +6,17 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.msg.Update
 
-abstract class IStoreManager {
+abstract class StoreManager {
   public static val localStore = "admin"
   public static val quorumAlias = "quorum"
   
-  private def IRecord getQuorumRecord() {
-    val qRecAlias = local.getRecordFromAlias(quorumAlias)
-    if (qRecAlias === null)
-      throw new RuntimeException('''No quorum record alias!''')
-    
-    val qRec = local.getRecord(qRecAlias)
-    if (qRec === null)
-      throw new RuntimeException('''No quorum record!''')
-      
-    qRec
-  }
-  
   synchronized def Quorum getCurrentQuorum() {
-    val qRec = getQuorumRecord()
+    val qRec = local.getRecordFromAlias(quorumAlias)
     getQuorumAt(qRec.lastIndex)
   }
   
   synchronized def Quorum getQuorumAt(int index) {
-    val qRec = getQuorumRecord()
+    val qRec = local.getRecordFromAlias(quorumAlias)
     
     val qMsg = qRec.getCommit(index)
     if (qMsg === null)
@@ -44,18 +32,26 @@ abstract class IStoreManager {
   def local() { getOrCreate(localStore) }
   
   def List<Message> pendingReplicas(int minimum)
-  def IStore getOrCreate(String udi)
+  def Store getOrCreate(String udi)
 }
 
-interface IStore {
-  def void setAlias(String record, String alias)
-  def String getRecordFromAlias(String alias)
+abstract class Store {
+  def StoreRecord getRecordFromAlias(String alias) {
+    val record = getFromAlias(alias)
+    if (record === null)
+      throw new RuntimeException('''No record for alias: «alias»''')
+    
+    getRecord(record)
+  }
   
-  def IRecord insert(Message msg)
-  def IRecord getRecord(String record)
+  def void setAlias(String record, String alias)
+  def String getFromAlias(String alias)
+  
+  def StoreRecord insert(Message msg)
+  def StoreRecord getRecord(String record)
 }
 
-abstract class IRecord {
+abstract class StoreRecord {
   def getType() {
     val insert = history.get(0).body as Insert
     insert.type

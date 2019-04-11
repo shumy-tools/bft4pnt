@@ -12,9 +12,9 @@ import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
-import pt.ieeta.bft4pnt.spi.IStoreManager
 import java.util.HashSet
 import java.util.HashMap
+import pt.ieeta.bft4pnt.spi.StoreManager
 
 class Message {
   //WARNING: don't change the position of defined types.
@@ -96,7 +96,7 @@ class Message {
   }
   
   // count distinct replicas that are part of the current quorum
-  def int countReplicas(Party ignore, IStoreManager mng) {
+  def int countReplicas(Party ignore, StoreManager mng) {
     val q = mng.currentQuorum
     
     // count distinct replicas
@@ -115,7 +115,7 @@ class Message {
     return counts.size
   }
   
-  def int countReplicas(IStoreManager mng) {
+  def int countReplicas(StoreManager mng) {
     countReplicas(null, mng)
   }
   

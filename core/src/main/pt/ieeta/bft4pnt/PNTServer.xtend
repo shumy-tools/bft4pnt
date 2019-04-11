@@ -20,14 +20,14 @@ import pt.ieeta.bft4pnt.msg.Replica
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IExtension
-import pt.ieeta.bft4pnt.spi.IStore
 import pt.ieeta.bft4pnt.spi.PntDatabase
-import pt.ieeta.bft4pnt.spi.IStoreManager
 import pt.ieeta.bft4pnt.msg.Quorum
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.Set
 import pt.ieeta.bft4pnt.msg.Slices
+import pt.ieeta.bft4pnt.spi.StoreManager
+import pt.ieeta.bft4pnt.spi.Store
 
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
@@ -98,10 +98,10 @@ class PNTServer {
     ]
   }
   
-  dispatch private def void handle(IStore cs, Message msg, Insert body, (Message)=>void reply) {
+  dispatch private def void handle(Store cs, Message msg, Insert body, (Message)=>void reply) {
     val record = cs.getRecord(msg.record.fingerprint)
-    val q = if (record === null && msg.record.udi == IStoreManager.localStore && body.type == IStoreManager.quorumAlias) {
-      cs.setAlias(msg.record.fingerprint, IStoreManager.quorumAlias)
+    val q = if (record === null && msg.record.udi == StoreManager.localStore && body.type == StoreManager.quorumAlias) {
+      cs.setAlias(msg.record.fingerprint, StoreManager.quorumAlias)
       msg.data.get(Quorum)
     } else
       db.store.currentQuorum
@@ -158,7 +158,7 @@ class PNTServer {
     }
   }
   
-  dispatch private def void handle(IStore cs, Message msg, Propose body, (Message)=>void reply) {
+  dispatch private def void handle(Store cs, Message msg, Propose body, (Message)=>void reply) {
     val q = db.store.currentQuorum
     val party = q.getParty(partyKey)
     
@@ -202,7 +202,7 @@ class PNTServer {
     reply.apply(vote)
   }
   
-  dispatch private def void handle(IStore cs, Message msg, Update body, (Message)=>void reply) {
+  dispatch private def void handle(Store cs, Message msg, Update body, (Message)=>void reply) {
     val q = db.store.currentQuorum
     val party = q.getParty(partyKey)
     
@@ -333,7 +333,7 @@ class PNTServer {
     }
   }
   
-  dispatch private def void handle(IStore cs, Message msg, Get body, (Message)=>void reply) {
+  dispatch private def void handle(Store cs, Message msg, Get body, (Message)=>void reply) {
     // record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {

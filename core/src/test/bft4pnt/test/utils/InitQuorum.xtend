@@ -15,9 +15,9 @@ import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.spi.PntDatabase
-import pt.ieeta.bft4pnt.spi.IStoreManager
 import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
+import pt.ieeta.bft4pnt.spi.StoreManager
 
 @FinalFieldsConstructor
 class InitQuorum {
@@ -86,7 +86,7 @@ class InitQuorum {
     ]
     
     // set quorum config
-    val insert = Insert.create(0L, IStoreManager.localStore, IStoreManager.quorumAlias, new Data(quorum))
+    val insert = Insert.create(0L, StoreManager.localStore, StoreManager.quorumAlias, new Data(quorum))
     for (party : 1 .. quorum.n)
       send(party, insert)
   }
