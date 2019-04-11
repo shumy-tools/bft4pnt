@@ -3,10 +3,11 @@ package pt.ieeta.bft4pnt.msg
 import io.netty.buffer.ByteBuf
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.DigestHelper
+import java.nio.ByteBuffer
 
 @FinalFieldsConstructor
 class Data implements ISection {
-  enum Type { EMPTY, RAW, STRING, SECTION, FILE }
+  enum Type { EMPTY, RAW, INTEGER, STRING, SECTION, FILE }
   enum Status { YES, NO, PENDING }
   
   public val Type type
@@ -18,6 +19,7 @@ class Data implements ISection {
   
   new() { this(Type.EMPTY, null, null) }
   new(byte[] value) { this(Type.RAW, value, null) }
+  new(Integer value) { this(Type.INTEGER, value, null) }
   new(String value) { this(Type.STRING, value, null) }
   new(ISection value) { this(Type.SECTION, value, value.class.name) }
   
@@ -40,6 +42,13 @@ class Data implements ISection {
     obj as byte[]
   }
   
+  def getInteger() {
+    if (type !== Type.INTEGER)
+      throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.STRING»)''')
+    
+    return obj as Integer
+  }
+  
   def getString() {
     if (type !== Type.STRING)
       throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.STRING»)''')
@@ -59,10 +68,12 @@ class Data implements ISection {
       return fingerprint
     
     this.fingerprint = switch type {
+      case EMPTY: {} //do nothing
       case RAW: DigestHelper.digest(obj as byte[])
+      case INTEGER: DigestHelper.digest(ByteBuffer.allocate(4).putInt(obj as Integer).array)
       case STRING: DigestHelper.digest(obj as String)
       case SECTION: DigestHelper.digest(obj as ISection)
-      //TODO: get fingerprint from the file manager
+      case FILE: {} //TODO: get fingerprint from the file manager
     }
   }
   
@@ -74,7 +85,9 @@ class Data implements ISection {
     buf.writeShort(type.ordinal)
     
     switch type {
+      case EMPTY: {} //do nothing
       case RAW: Message.writeBytes(buf, obj as byte[])
+      case INTEGER: buf.writeInt(obj as Integer)
       case STRING: Message.writeString(buf, obj as String)
       case SECTION: {
         Message.writeString(buf, secType)
@@ -89,8 +102,15 @@ class Data implements ISection {
     val type = Type.values.get(typeIndex)
     
     switch type {
+      case EMPTY: {} //do nothing
+      
       case RAW: {
         val obj = Message.readBytes(buf)
+        new Data(obj)
+      }
+      
+      case INTEGER: {
+        val obj = buf.readInt
         new Data(obj)
       }
       

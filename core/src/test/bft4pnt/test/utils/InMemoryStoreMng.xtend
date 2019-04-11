@@ -76,22 +76,24 @@ class InMemoryStoreMng extends StoreManager {
   
   new() { repTable = new RepTable(this) }
   
-  override pendingReplicas(int minimum) {
-    repTable.get(minimum)
-  }
-  
   override getOrCreate(String udi) {
     stores.get(udi) ?: {
-      val created = new InMemoryStore(repTable)
+      val created = new InMemoryStore(repTable, udi)
       stores.put(udi, created)
       created
     }
+  }
+  
+  override pendingReplicas(int minimum) {
+    repTable.get(minimum)
   }
 }
 
 @FinalFieldsConstructor
 class InMemoryStore extends Store {
   val RepTable repTable
+  
+  @Accessors val String udi
   
   val alias = new ConcurrentHashMap<String, String>
   val records = new HashMap<String, StoreRecord>

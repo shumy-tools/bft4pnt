@@ -376,7 +376,7 @@ class ConsensusTest {
       
       counter.incrementAndGet
       println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
-      if (counter.get == 15) {
+      if (counter.get == 18) {
         println('''----------------START-REP 2----------------''')
         net.replicator(2).replicate
       }
@@ -394,7 +394,7 @@ class ConsensusTest {
     net.replicator(2).onReply = [
       counter.incrementAndGet
       println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
-      if (counter.get == 23) {
+      if (counter.get == 28) {
         println('''----------------START-REP 3----------------''')
         net.replicator(3).replicate
       }
@@ -414,7 +414,7 @@ class ConsensusTest {
       
       counter.incrementAndGet
       println('''ON-REPLY: (party=«party», type=«type», update=«propose !== null») -> «counter.get»''')
-      if (counter.get == 28) {
+      if (counter.get == 34) {
         ok.set = true
         waiter.resume
       }

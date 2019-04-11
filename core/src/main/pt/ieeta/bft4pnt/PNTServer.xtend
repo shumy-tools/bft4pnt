@@ -41,7 +41,7 @@ class PNTServer {
   val (Message)=>boolean authorizer // authorize client?
   
   public val Replicator replicator
-  public val extensions = new ConcurrentHashMap<String, IExtension>
+  val extensions = new ConcurrentHashMap<String, IExtension>
   
   new(KeyPair keys, String dbName, MessageBroker broker, (Message)=>boolean authorizer) {
     this.partyKey = KeyPairHelper.encode(keys.public)
@@ -57,6 +57,10 @@ class PNTServer {
   }
   
   def isReady() { broker.ready }
+  
+  def void addExtension(String type, IExtension ext) {
+    extensions.put(type, ext)
+  }
   
   def void start() {
     broker.start[ inetSource, msg |
@@ -99,15 +103,30 @@ class PNTServer {
   }
   
   dispatch private def void handle(Store cs, Message msg, Insert body, (Message)=>void reply) {
-    val record = cs.getRecord(msg.record.fingerprint)
-    val q = if (record === null && msg.record.udi == StoreManager.LOCAL_STORE && body.type == Store.QUORUM_ALIAS) {
+    // handle all quorum records
+    if (body.type == Store.QUORUM_ALIAS) {
+      val qRec = cs.getFromAlias(Store.QUORUM_ALIAS)
+      if (qRec !== null && msg.record.fingerprint != qRec) {
+        logger.error("Quorum record already exists: (submitted={}, current={})", msg.record.fingerprint, qRec)
+        reply.apply(new Message(msg.record, Error.invalid("Quorum record already exists!")))
+        return;
+      }
+      
+      // set the alias for the quorum record. For the global quorum and all stores.
       cs.setAlias(msg.record.fingerprint, Store.QUORUM_ALIAS)
+    }
+    
+    // get the global quorum record
+    val q = if (msg.record.udi == StoreManager.LOCAL_STORE && body.type == Store.QUORUM_ALIAS) {
       msg.data.get(Quorum)
     } else
       db.store.currentQuorum
     
-    // the record may already exist in a replication process or client re-submission
+    // set this party
     val party = q.getParty(partyKey)
+    
+    // the record may already exist in a replication process or client re-submission
+    val record = cs.getRecord(msg.record.fingerprint)
     if (record !== null) {
       logger.info("Record already exists: {}", msg.record.fingerprint)
       
@@ -139,19 +158,26 @@ class PNTServer {
           return;
         }
         
-        // check extension constraints
-        val ext = extensions.get(body.type)
-        val error = ext?.checkInsert(cs, msg, body)
-        if (error !== null) {
-          logger.error("Extension constraint error (msg={})", error)
-          reply.apply(new Message(msg.record, Error.constraint(error)))
-          return;
+        // check extension constraints. LOCAL_STORE is a special store that is handled by the core protocol
+        if (msg.record.udi != StoreManager.LOCAL_STORE) {
+          val ext = extensions.get(body.type)
+          val error = ext?.onInsert(cs, msg)
+          if (error !== null) {
+            logger.error("Extension constraint error (msg={})", error)
+            reply.apply(new Message(msg.record, Error.constraint(error)))
+            return;
+          }
         }
         
-        // execute insert extension
         val rep = msg.setLocalReplica(party, keys.private)
-        if (ext === null || ext.insert(cs, msg))
-          cs.insert(msg)
+        try {
+          cs.insert(msg) // execute storage
+        } catch (Throwable ex) {
+          logger.error("Storage error!")
+          ex.printStackTrace
+          reply.apply(new Message(msg.record, Error.internal("Storage error!")))
+          return
+        }
         
         reply.apply(new Message(msg.record, Reply.ack(party, rep.signature)))
       }
@@ -170,13 +196,6 @@ class PNTServer {
       return;
     }
     
-    // parties only accept proposals if messages for all past fingerprints exist.
-    if (body.index > record.lastIndex + 1) {
-      logger.error("Non existent past commits (index={}, last={})", body.index, record.lastCommit)
-      reply.apply(new Message(msg.record, Error.unauthorized("Non existent past commits!")))
-      return;
-    }
-    
     // commits can have concurrent proposals of higher rounds for the same value.
     val update = record.getCommit(body.index)
     if (update !== null) {
@@ -185,15 +204,29 @@ class PNTServer {
         reply.apply(update)
         return;
       }
-    } else { // ignore propose rules if it already has a commit
-      // proposals can only be overridden by other proposals of higher rounds.
-      val current = record.vote
-      if (current !== null) {
-        val currentBody = current.body as Reply
-        if (currentBody.propose.round >= body.round) {
-          reply.apply(current)
-          return;
-        }
+    }
+    
+    // if the store is not in the current quorum it cannot accept the propose
+    if (q.index !== cs.quorumIndex) {
+      logger.error("Store in incorrect quorum: (q={}, store={})", q.index, cs.quorumIndex)
+      reply.apply(new Message(msg.record, Error.unauthorized("Store in incorrect quorum!")))
+      return;
+    }
+    
+    // parties only accept proposals if messages for all past fingerprints exist.
+    if (body.index > record.lastIndex + 1) {
+      logger.error("Non existent past commits (index={}, last={})", body.index, record.lastCommit)
+      reply.apply(new Message(msg.record, Error.unauthorized("Non existent past commits!")))
+      return;
+    }
+     
+    // proposals can only be overridden by other proposals of higher rounds.
+    val current = record.vote
+    if (current !== null) {
+      val currentBody = current.body as Reply
+      if (currentBody.propose.round >= body.round) {
+        reply.apply(current)
+        return;
       }
     }
     
@@ -314,19 +347,26 @@ class PNTServer {
           return;
         }
         
-        // check extension constraints
-        val ext = extensions.get(record.type)
-        val error = ext?.checkUpdate(cs, msg, body)
-        if (error !== null) {
-          logger.error("Extension constraint error (msg={})", error)
-          reply.apply(new Message(msg.record, Error.constraint(error)))
-          return;
+        // check extension constraints. LOCAL_STORE is a special store that is handled by the core protocol
+        if (msg.record.udi != StoreManager.LOCAL_STORE) {
+          val ext = extensions.get(record.type)
+          val error = ext?.onUpdate(cs, msg)
+          if (error !== null) {
+            logger.error("Extension constraint error (msg={})", error)
+            reply.apply(new Message(msg.record, Error.constraint(error)))
+            return;
+          }
         }
         
-        // execute update extension
         val rep = msg.setLocalReplica(party, keys.private)
-        if (ext === null || ext.update(cs, msg))
-          record.update(msg)
+        try {
+          record.update(msg) // execute storage
+        } catch (Throwable ex) {
+          logger.error("Storage error!")
+          ex.printStackTrace
+          reply.apply(new Message(msg.record, Error.internal("Storage error!")))
+          return
+        }
         
         reply.apply(new Message(msg.record, Reply.ack(party, body.propose, rep.signature)))
       }
@@ -421,11 +461,8 @@ class Replicator {
     active.set = true
     val q = db.store.currentQuorum
     
-    //TODO: on quorum transition it should confirm (n - t) replicas
-    val pendings = db.store.pendingReplicas(q.n)
-    
-    
     // process and transmit should be separated procedures. The asynchronous replies from the transmission can change the msg.replicas
+    val pendings = db.store.pendingReplicas(q.n)
     for (msg : pendings) {
       try {
         // process pendings

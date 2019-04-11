@@ -5,7 +5,6 @@ import java.security.KeyPair
 import java.security.Security
 import java.util.ArrayList
 import java.util.List
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
@@ -72,17 +71,24 @@ class InitQuorum {
     client.send(quorum.getPartyAddress(party), msg)
   }
   
-  val testStarted = new AtomicBoolean(false)
   def void start((Integer, Message)=>void handler, ()=>void startTest) {
     val counter = new AtomicInteger(0)
     client.start[ inetSource, reply |
-      if (counter.incrementAndGet === quorum.n) {
-        testStarted.set = true
+      counter.incrementAndGet
+      
+      if (counter.get === quorum.n) {
+        // set client quorum index
+        val insert = Insert.create(0L, "udi-1", Store.QUORUM_ALIAS, new Data(0))
+        for (party : 1 .. quorum.n)
+          send(party, insert)
+      }
+      
+      if (counter.get === 2*quorum.n) {
         println("Quorum set, starting test.")
         startTest.apply
       }
       
-      if (testStarted.get)
+      if (counter.get > 2*quorum.n)
         handler.apply(inetSource.port - port, reply)
     ]
     

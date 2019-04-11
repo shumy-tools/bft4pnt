@@ -12,3 +12,58 @@
  --Possible improvements--
  * Can we use a proposal for each store instead of each record?
  * Change the thread model using an asynchronous message processor? Also change the SPI to asynchronous?
+
+--testReplication is unstable-- 
+Quorum set, starting test.
+17:27:12.046 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=0) from 127.0.0.1:3015
+17:27:12.047 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-RECV: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=0) from 127.0.0.1:3015
+17:27:12.047 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-RECV: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=0) from 127.0.0.1:3015
+17:27:12.048 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-SENT: (id=1, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(1, 0)) to 127.0.0.1:3015
+17:27:12.048 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-RECV: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=0) from 127.0.0.1:3015
+17:27:12.049 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-SENT: (id=1, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(3, 0)) to 127.0.0.1:3015
+17:27:12.049 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-SENT: (id=1, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(2, 0)) to 127.0.0.1:3015
+17:27:12.050 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-SENT: (id=1, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(4, 0)) to 127.0.0.1:3015
+17:27:12.051 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=2, type=PROPOSE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) from 127.0.0.1:3015
+17:27:12.052 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-SENT: (id=2, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=VOTE, party=(1, 0), index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) to 127.0.0.1:3015
+17:27:12.053 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-RECV: (id=2, type=PROPOSE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) from 127.0.0.1:3015
+17:27:12.053 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-SENT: (id=2, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=VOTE, party=(2, 0), index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) to 127.0.0.1:3015
+17:27:12.054 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-RECV: (id=2, type=PROPOSE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) from 127.0.0.1:3015
+17:27:12.055 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-SENT: (id=2, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=VOTE, party=(3, 0), index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) to 127.0.0.1:3015
+17:27:12.055 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-RECV: (id=2, type=PROPOSE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, index=1, f=54gQPuFTGPzSr5tztOu7M6kDsCDeezB9cfX+0PQz5Ug=, round=2) from 127.0.0.1:3015
+17:27:12.056 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-SENT: (id=2, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=VOTE, party=(4, 0), index=1, f=54gQPuFTGPzSr5tztOu7M6kDsCDeezB9cfX+0PQz5Ug=, round=2) to 127.0.0.1:3015
+17:27:12.059 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=3, type=UPDATE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, q=0, index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1, votes=3, replicas=0) from 127.0.0.1:3015
+17:27:12.059 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-RECV: (id=3, type=UPDATE, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, q=0, index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1, votes=3, replicas=0) from 127.0.0.1:3015
+17:27:12.062 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-SENT: (id=3, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(2, 0), index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) to 127.0.0.1:3015
+17:27:12.062 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-SENT: (id=3, type=REPLY, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=ACK, party=(1, 0), index=1, f=i1NjnxUsj8bvMIAv3kYroL6c8IX3WA3Gnv1y4AKruzU=, round=1) to 127.0.0.1:3015
+----------------START-REP 1----------------
+17:27:12.064 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) -> 2
+17:27:12.065 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) to 127.0.0.1:3017
+17:27:12.065 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) -> 3
+17:27:12.066 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) to 127.0.0.1:3018
+17:27:12.066 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) -> 4
+17:27:12.066 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-RECV: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) from 127.0.0.1:3016
+17:27:12.067 [nioEventLoopGroup-3-1] INFO PNTServer - Record already exists: /hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=
+17:27:12.067 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) to 127.0.0.1:3019
+17:27:12.067 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-RECV: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) from 127.0.0.1:3016
+17:27:12.067 [nioEventLoopGroup-4-1] INFO PNTServer - Record already exists: /hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=
+17:27:12.068 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-RECV: (id=0, type=INSERT, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=quorum, replicas=1) from 127.0.0.1:3016
+17:27:12.068 [nioEventLoopGroup-5-1] INFO PNTServer - Record already exists: /hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=
+17:27:12.069 [nioEventLoopGroup-3-1] INFO MessageBroker - MSG-SENT: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(2, 0)) to 127.0.0.1:3016
+17:27:12.069 [nioEventLoopGroup-4-1] INFO MessageBroker - MSG-SENT: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(3, 0)) to 127.0.0.1:3016
+17:27:12.069 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(3, 0)) from 127.0.0.1:3018
+17:27:12.069 [nioEventLoopGroup-5-1] INFO MessageBroker - MSG-SENT: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(4, 0)) to 127.0.0.1:3016
+17:27:12.069 [nioEventLoopGroup-2-1] INFO Replicator - REPLICA-REPLY: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(3, 0))
+ON-REPLY: (party=(3, 0), type=ACK, update=false) -> 4
+17:27:12.071 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(2, 0)) from 127.0.0.1:3017
+17:27:12.072 [nioEventLoopGroup-2-1] INFO Replicator - REPLICA-REPLY: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(2, 0))
+ON-REPLY: (party=(2, 0), type=ACK, update=false) -> 5
+ON-REPLICATE: (q=0, to=[2, 3, 4], msg=(id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1)) -> 6
+17:27:12.074 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) -> 2
+17:27:12.074 [nioEventLoopGroup-2-1] INFO MessageBroker - MSG-RECV: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(4, 0)) from 127.0.0.1:3019
+17:27:12.074 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) to 127.0.0.1:3017
+17:27:12.074 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) -> 3
+17:27:12.074 [nioEventLoopGroup-2-1] INFO Replicator - REPLICA-REPLY: (id=0, type=REPLY, udi=admin, rec=/hNNK9yJOE4MEzapNKO4QZMG5yRqwQNeeb7+RoJdknM=, type=ACK, party=(4, 0))
+ON-REPLY: (party=(4, 0), type=ACK, update=false) -> 7
+17:27:12.075 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) to 127.0.0.1:3018
+17:27:12.075 [nioEventLoopGroup-6-1] INFO Replicator - REPLICATE: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) -> 4
+17:27:12.075 [nioEventLoopGroup-6-1] INFO MessageBroker - MSG-SENT: (id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1) to 127.0.0.1:3019

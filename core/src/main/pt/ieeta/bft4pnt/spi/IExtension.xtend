@@ -1,16 +1,9 @@
 package pt.ieeta.bft4pnt.spi
 
-import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.msg.Update
 
 interface IExtension {
-  // validate messages before processing. Return null to continue processing
-  def String checkInsert(Store cs, Message msg, Insert insert)
-  def String checkUpdate(Store cs, Message msg, Update update)
-  
-  // return true if should continue (insert, update) automatic store.
-  // return false if the store process is handled in the extension
-  def boolean insert(Store cs, Message msg)
-  def boolean update(Store cs, Message msg)
+  // Validate before processing. Return a message constraint error or null to continue.
+  def String onInsert(Store cs, Message msg)
+  def String onUpdate(Store cs, Message msg)
 }

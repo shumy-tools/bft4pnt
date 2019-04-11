@@ -29,21 +29,29 @@ abstract class StoreManager {
   }
   
   def local() { getOrCreate(LOCAL_STORE) }
-  
-  def List<Message> pendingReplicas(int minimum)
   def Store getOrCreate(String udi)
+  
+  // all messages from all stores with a number of replicas less than the "minimum"
+  def List<Message> pendingReplicas(int minimum)
 }
 
 abstract class Store {
   public static val QUORUM_ALIAS = "quorum"
   
+  def Integer getQuorumIndex() {
+    val record = getRecordFromAlias(QUORUM_ALIAS)
+    record.lastCommit.data.integer
+  }
+  
   def StoreRecord getRecordFromAlias(String alias) {
     val record = getFromAlias(alias)
     if (record === null)
-      throw new RuntimeException('''No record for alias: «alias»''')
+      throw new RuntimeException('''No record for alias: (udi=«udi», alias=«alias»)''')
     
     getRecord(record)
   }
+  
+  def String getUdi()
   
   def void setAlias(String record, String alias)
   def String getFromAlias(String alias)
