@@ -58,6 +58,9 @@ abstract class Store {
   
   def StoreRecord insert(Message msg)
   def StoreRecord getRecord(String record)
+  
+  // number of message from this store with replicas less than the "minimum"
+  def Integer numberOfPendingReplicas(int minimum)
 }
 
 abstract class StoreRecord {
@@ -103,7 +106,8 @@ abstract class StoreRecord {
   def int getLastIndex()
   def void setLastIndex(int index)
   
-  protected def List<Message> getHistory()
+  def List<Message> getHistory()
+  
   protected def void addHistory(Message msg)
   protected def void setHistory(int index, Message msg)
 }

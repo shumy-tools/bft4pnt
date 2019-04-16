@@ -3,6 +3,8 @@ package pt.ieeta.bft4pnt.crypto
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
+import org.bouncycastle.util.encoders.Base64
+import java.nio.charset.StandardCharsets
 
 class SignatureHelper {
   public static val String algorithm = "Ed25519"
@@ -23,5 +25,9 @@ class SignatureHelper {
     ]
     
     return verifier.verify(signature)
+  }
+  
+  static def String encode(byte[] signature) {
+    new String(Base64.encode(signature), StandardCharsets.UTF_8)
   }
 }

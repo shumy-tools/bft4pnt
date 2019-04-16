@@ -44,7 +44,7 @@ class Data implements ISection {
   
   def getInteger() {
     if (type !== Type.INTEGER)
-      throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.STRING»)''')
+      throw new RuntimeException('''Wrong data type retrieve! (type=«type», try=«Type.INTEGER»)''')
     
     return obj as Integer
   }

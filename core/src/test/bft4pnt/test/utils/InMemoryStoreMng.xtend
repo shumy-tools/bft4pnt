@@ -36,6 +36,10 @@ class RepTable {
     pendings.values.toList
   }
   
+  synchronized def Integer get(String udi, int minimum) {
+    get(minimum).filter[record.udi == udi].size
+  }
+  
   synchronized def void update(Message msg) {
     val key = msg.key
     val counts = msg.countReplicas(mng)
@@ -110,6 +114,10 @@ class InMemoryStore extends Store {
   
   override getRecord(String record) {
     records.get(record)
+  }
+  
+  override numberOfPendingReplicas(int minimum) {
+    repTable.get(udi, minimum)
   }
 }
 

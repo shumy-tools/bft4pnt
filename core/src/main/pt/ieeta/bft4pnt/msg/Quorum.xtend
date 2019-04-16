@@ -7,74 +7,65 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.HashMap
 import java.util.List
+import java.util.SortedMap
+import java.util.TreeMap
+import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
 class Quorum implements ISection {
-  // helper storage, is not transmitted
-  val parties =  new HashMap<String, Party>
-  
   public val int index
   public val int t
+  public val SortedMap<String, QuorumParty> parties
   
-  val List<PublicKey> keys
-  val List<InetSocketAddress> addresses
+  def getN() { parties.size }
   
-  def getN() { keys.size }
-  
-  new(int index, int t, List<PublicKey> keys, List<InetSocketAddress> addresses) {
+  new(int index, int t, List<QuorumParty> qParties) {
     this.index = index
     this.t = t
-    this.keys = Collections.unmodifiableList(keys)
-    this.addresses = Collections.unmodifiableList(addresses)
     
-    if (n < 2*t + 1 || keys.size !== addresses.size)
+    val parties = new TreeMap<String, QuorumParty>
+    for (qP : qParties)
+      parties.put(KeyPairHelper.encode(qP.key), qP)
+    
+    this.parties = Collections.unmodifiableSortedMap(parties)
+    
+    if (n < 2*t + 1)
       throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
-    
-    var party = 1
-    for (key : keys) {
-      val sKey = KeyPairHelper.encode(key)
-      parties.put(sKey, new Party(party, index))
-      party++
-    }
-    
-    if (keys.size !== parties.size)
-      throw new RuntimeException('''Repeated keys in the quorum configuration!''')
   }
   
   def boolean contains(String party) {
     parties.containsKey(party)
   }
   
-  def List<Party> getAllParties() {
-    parties.values.toList
+  def List<String> getAllParties() {
+    parties.keySet.toList
   }
   
-  def Party getParty(String key) {
-    parties.get(key)
+  def getPartyKey(String party) {
+    parties.get(party)?.key
   }
   
-  def getPartyKey(int party) {
-    if (party > keys.size)
-      return null
-    keys.get(party - 1)
+  def getPartyAddress(String party) {
+    parties.get(party)?.address
   }
   
-  def getPartyAddress(int party) {
-    if (party > addresses.size)
-      return null
-    addresses.get(party - 1)
+  def Quorum add(List<QuorumParty> qParties) {
+    val all = new HashMap<String, QuorumParty> => [
+      putAll(this.parties)
+      for (qP : qParties)
+        put(KeyPairHelper.encode(qP.key), qP)
+    ]
+    
+    return new Quorum(index + 1, t, all.values.toList)
   }
   
   override write(ByteBuf buf) {
     buf.writeInt(index)
     buf.writeInt(t)
-    buf.writeInt(keys.size)
+    buf.writeInt(parties.size)
     
-    for (key : keys)
-      Message.writeBytes(buf, key.encoded)
-    
-    for (address : addresses)
-      Message.writeString(buf, '''«address.hostString»:«address.port»''')
+    for (party : parties.values)
+      party.write(buf)
   }
   
   static def Quorum read(ByteBuf buf) {
@@ -82,22 +73,38 @@ class Quorum implements ISection {
     val t = buf.readInt
     val number = buf.readInt
     
-    val keys = new ArrayList<PublicKey>(number)
-    val addresses = new ArrayList<InetSocketAddress>(number)
-    
+    val qParties = new ArrayList<QuorumParty>(number)
     for (n : 0 ..< number) {
-      val bKey = Message.readBytes(buf)
-      val key = KeyPairHelper.read(bKey)
-      keys.add(key)
+      val qP = QuorumParty.read(buf)
+      qParties.add(qP)
     }
     
-    for (n : 0 ..< number) {  
-      val bAddress = Message.readString(buf)
-      val hostPort = bAddress.split(":")
-      val address = new InetSocketAddress(hostPort.get(0), Integer.parseInt(hostPort.get(1)))
-      addresses.add(address)
-    }
+    return new Quorum(index, t, qParties)
+  }
+}
+
+@FinalFieldsConstructor
+class QuorumParty implements ISection {
+  public val PublicKey key
+  public val InetSocketAddress address
+  
+  def String strKey() {
+    KeyPairHelper.encode(key)
+  }
+  
+  override write(ByteBuf buf) {
+    Message.writeBytes(buf, key.encoded)
+    Message.writeString(buf, '''«address.hostString»:«address.port»''')
+  }
+  
+  static def QuorumParty read(ByteBuf buf) {
+    val bKey = Message.readBytes(buf)
+    val key = KeyPairHelper.read(bKey)
     
-    return new Quorum(index, t, keys, addresses)
+    val bAddress = Message.readString(buf)
+    val hostPort = bAddress.split(":")
+    val address = new InetSocketAddress(hostPort.get(0), Integer.parseInt(hostPort.get(1)))
+    
+    return new QuorumParty(key, address)
   }
 }

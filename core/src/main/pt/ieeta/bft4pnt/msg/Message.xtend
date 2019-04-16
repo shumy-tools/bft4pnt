@@ -4,17 +4,17 @@ import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
 import java.security.KeyPair
-import java.security.PrivateKey
 import java.util.ArrayList
 import java.util.Collections
+import java.util.HashMap
+import java.util.HashSet
 import java.util.List
 import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
-import java.util.HashSet
-import java.util.HashMap
 import pt.ieeta.bft4pnt.spi.StoreManager
+import java.security.PublicKey
 
 class Message {
   //WARNING: don't change the position of defined types.
@@ -34,7 +34,7 @@ class Message {
   var Signature signature
   
   var Data data = new Data
-  var List<Replica> replicas = Collections.EMPTY_LIST
+  var List<Signature> replicas = Collections.EMPTY_LIST
   val onReplicasChange = new HashMap<String, ()=>void>
   
   new(Record record, ISection body) { this(1, record, body) }
@@ -66,27 +66,27 @@ class Message {
     this.data = data
   }
   
-  def List<Replica> getReplicas() {
+  def List<Signature> getReplicas() {
     synchronized(onReplicasChange) {
       Collections.unmodifiableList(replicas)
     }
   }
   
-  def Replica setLocalReplica(Party party, PrivateKey key) {
-    val replicaSig = SignatureHelper.sign(key, sigSlice)
-    val rep = new Replica(sigSlice, party, replicaSig)
+  def Signature setLocalReplica(KeyPair keys) {
+    val replicaSig = SignatureHelper.sign(keys.private, sigSlice)
+    val rep = new Signature(keys.public, replicaSig)
     
     addReplica(rep)
     return rep
   }
   
-  def void addReplica(Replica rep) {
+  def void addReplica(Signature rep) {
     if (type !== Type.INSERT && type !== Type.UPDATE)
       throw new RuntimeException("Only (insert, update) messages have replicas!")
     
     synchronized(onReplicasChange) {
       //TODO: override existing replica (party, quorum) instead of ignoring?
-      if (!replicas.exists[party == rep.party]) {
+      if (!replicas.exists[strSource == rep.strSource]) {
         this.replicas.add(rep)
         
         //report change to storage
@@ -96,18 +96,16 @@ class Message {
   }
   
   // count distinct replicas that are part of the current quorum
-  def int countReplicas(Party ignore, StoreManager mng) {
+  def int countReplicas(PublicKey ignore, StoreManager mng) {
     val q = mng.currentQuorum
+    val encodedIgnore = if (ignore !== null) KeyPairHelper.encode(ignore)
     
     // count distinct replicas
     val counts = new HashSet<String>
     synchronized(onReplicasChange) {
       for (rep : replicas) {
-        val pQuorum = mng.getQuorumAt(rep.party.quorum)
-        val key = pQuorum.getPartyKey(rep.party.index)
-        
-        val encodedKey = KeyPairHelper.encode(key)
-        if (rep.party != ignore && q.contains(encodedKey) && rep.verifySignature(key))
+        val encodedKey = rep.strSource
+        if (encodedKey != encodedIgnore && q.contains(encodedKey) && rep.verify(sigSlice))
           counts.add(encodedKey)
       }
     }
@@ -205,7 +203,7 @@ class Message {
       less += (b1 - buf.readableBytes)
       
       var Data data = null
-      val replicas = new ArrayList<Replica>
+      val replicas = new ArrayList<Signature>
       if (type === Type.INSERT || type === Type.UPDATE) {
         val b2 = buf.readableBytes
           data = Data.read(buf)
@@ -214,19 +212,18 @@ class Message {
         val number = buf.readInt; less += 4
         for (n : 0 ..< number) {
           val b3 = buf.readableBytes
-            val rep = Replica.read(buf);
+            val rep = Signature.read(buf);
           less += (b3 - buf.readableBytes)
           replicas.add(rep)
         }
       }
       
-      // the signed data block
-      val sigSlice = block.remove(less)
-      replicas.forEach[slice = sigSlice]
-      
       // Verify the correctness of the source digital signature
+      val sigSlice = block.remove(less)
       if (!signature.verify(sigSlice))
         return new ReadResult("Incorrect signature!")
+      
+      //TODO: verify and remove incorrect signature replicas?
       
       val msg = new Message(version, record, body)
       msg.id = id
@@ -305,7 +302,7 @@ class Message {
       Insert:   ''', type=«body.type», replicas=«replicas.size»'''
       Update:   ''', q=«body.quorum», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size», replicas=«replicas.size»'''
       Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
-      Reply:    ''', type=«body.type», party=«body.party»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
+      Reply:    ''', type=«body.type», party=«body.strParty»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
       Get:      ''', index=«body.index», slices=«body.slices»'''
       Error:    ''', code=«body.code», error=«body.msg»'''
     }

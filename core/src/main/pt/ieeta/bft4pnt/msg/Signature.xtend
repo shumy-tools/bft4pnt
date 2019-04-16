@@ -6,13 +6,18 @@ import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.crypto.ArraySlice
+import pt.ieeta.bft4pnt.crypto.DigestHelper
 
 @FinalFieldsConstructor
 class Signature implements ISection {
   public val PublicKey source
   public val byte[] signature
   
-  def verify (ArraySlice slice) {
+  def String strSource() {
+    KeyPairHelper.encode(source)
+  }
+  
+  def verify(ArraySlice slice) {
     SignatureHelper.verify(source, slice, signature)
   }
   
@@ -27,5 +32,19 @@ class Signature implements ISection {
     
     val source = KeyPairHelper.read(key)
     return new Signature(source, signature)
+  }
+  
+  override equals(Object obj) {
+    if (obj === null)
+      return false
+    
+    if (obj === this)
+      return true
+    
+    if (obj instanceof Signature)
+      return DigestHelper.digest(this.source.encoded) == DigestHelper.digest(obj.source.encoded)
+        && DigestHelper.digest(this.signature) == DigestHelper.digest(obj.signature)
+    
+    return false
   }
 }

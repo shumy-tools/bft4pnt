@@ -11,10 +11,10 @@ class Update implements ISection {
   public val Integer quorum
   public val Propose propose
   
-  public val List<Vote> votes
+  public val List<Signature> votes
   public val Slices slices
   
-  new(Integer quorum, Propose propose, List<Vote> votes) {
+  new(Integer quorum, Propose propose, List<Signature> votes) {
     this.quorum = quorum
     this.propose = propose
     
@@ -38,9 +38,9 @@ class Update implements ISection {
     val propose = Propose.read(buf)
     
     val number = buf.readInt
-    val votes = new ArrayList<Vote>(number)
+    val votes = new ArrayList<Signature>(number)
     for (n : 0 ..< number) {
-      val vote = Vote.read(buf)
+      val vote = Signature.read(buf)
       votes.add(vote)
     }
     
@@ -49,17 +49,16 @@ class Update implements ISection {
     return new Update(quorum, propose, votes, slices)
   }
    
-  static def create(long msgId, String udi, String rec, Integer quorum, Propose propose, Map<Integer, Message> voteReplies, Data block) {
-    val votes = new ArrayList<Vote>
+  static def create(long msgId, String udi, String rec, Integer quorum, Propose propose, Map<String, Message> voteReplies, Data block) {
+    val votes = new ArrayList<Signature>
     for (party : voteReplies.keySet) {
       val msgReply = voteReplies.get(party)
       val reply = msgReply.body
       if (reply instanceof Reply) {
         if (reply.type === Reply.Type.VOTE
-          && reply.party.quorum == quorum
           && reply.propose.index === propose.index && reply.propose.fingerprint == propose.fingerprint && reply.propose.round === propose.round
         ) {
-          val vote = new Vote(party, msgReply.signature)
+          val vote = new Signature(reply.party, msgReply.signature)
           votes.add(vote)
         }
       }
@@ -72,23 +71,5 @@ class Update implements ISection {
       id = msgId
       data = block
     ]
-  }
-}
-
-@FinalFieldsConstructor
-class Vote implements ISection {
-  public val Integer party
-  public val byte[] signature
-  
-  override write(ByteBuf buf) {
-    buf.writeInt(party)
-    Message.writeBytes(buf, signature)
-  }
-  
-  static def Vote read(ByteBuf buf) {
-    val party = buf.readInt
-    val signature = Message.readBytes(buf)
-    
-    return new Vote(party, signature)
   }
 }

@@ -1,7 +1,6 @@
 package bft4pnt.test.utils
 
 import java.net.InetSocketAddress
-import java.security.KeyPair
 import java.security.Security
 import java.util.ArrayList
 import java.util.List
@@ -15,60 +14,90 @@ import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Quorum
+import pt.ieeta.bft4pnt.msg.QuorumParty
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
+import org.eclipse.xtend.lib.annotations.Accessors
+
+@FinalFieldsConstructor
+class InitQuorumParty {
+  public val QuorumParty party
+  public val PNTServer server
+}
 
 @FinalFieldsConstructor
 class InitQuorum {
+  static val (Message)=>boolean authorizer = [ true ]
+  
   val int port
   val MessageBroker client
-  val List<PNTServer> servers
-  val Quorum quorum
+  val List<InitQuorumParty> parties
+  
+  @Accessors(PUBLIC_GETTER) var String quorumRec
+  @Accessors(PUBLIC_GETTER) var Quorum quorum
+  @Accessors(PUBLIC_GETTER) var String finger
+  
+  new(int port, MessageBroker client, List<InitQuorumParty> parties, Quorum quorum) {
+    this(port, client, parties)
+    
+    this.quorum = quorum
+    this.finger = new Data(quorum).fingerprint
+    this.quorumRec = finger
+  }
+  
+  static def InitQuorumParty newParty(int port, int party) {
+    val dbName = '''DB-«port»-«party»'''
+    PntDatabase.set(dbName, new InMemoryStoreMng, new InMemoryFileMng)
+    
+    val keys = KeyPairHelper.genKeyPair
+    val inet = new InetSocketAddress("127.0.0.1", port + party)
+      
+    val broker = new MessageBroker(inet, keys)
+    val pnt = new PNTServer(keys, dbName, broker, authorizer)
+    while (!pnt.ready)
+      Thread.sleep(100)
+      
+    return new InitQuorumParty(new QuorumParty(keys.public, inet ), pnt)
+  }
   
   static def InitQuorum init(int port, int n, int t) {
     Security.addProvider(new BouncyCastleProvider)
     
-    val parties = new ArrayList<KeyPair>
-    val inets = new ArrayList<InetSocketAddress>
+    val parties = new ArrayList<InitQuorumParty>
     for (i : 0 ..< n) {
-      val inet = new InetSocketAddress("127.0.0.1", port + 1 + i)
-      val keys = KeyPairHelper.genKeyPair
-      parties.add(keys)
-      inets.add(inet)
+      val iqp = newParty(port, i + 1)
+      parties.add(iqp)
     }
     
-    val servers = new ArrayList<PNTServer>
-    for (i : 0 ..< n) {
-      val dbName = '''DB-«port»-i'''
-      PntDatabase.set(dbName, new InMemoryStoreMng, new InMemoryFileMng)
-      
-      val broker = new MessageBroker(inets.get(i), parties.get(i))
-      val (Message)=>boolean authorizer = [ true ]
-      
-      val pnt = new PNTServer(parties.get(i), dbName, broker, authorizer)
-      servers.add(pnt)
-      while (!pnt.ready)
-        Thread.sleep(100)
-    }
+    val quorum = new Quorum(0, t, parties.map[party].clone)
     
     val inet = new InetSocketAddress("127.0.0.1", port)
     val keys = KeyPairHelper.genKeyPair
-    val quorum = new Quorum(0, t, parties.map[public], inets)
-    
     val client = new MessageBroker(inet, keys)
     client.logInfoFilter = [false]
     
-    return new InitQuorum(port, client, servers, quorum)
+    return new InitQuorum(port, client, parties, quorum)
+  }
+  
+  def getPartyAtIndex(int party) {
+    parties.get(party - 1).party.strKey
+  }
+  
+  def addParty(InitQuorumParty party) {
+    parties.add(party)
+    this.quorum = quorum.add(#[party.party])
+    this.finger = new Data(quorum).fingerprint
   }
   
   def replicator(int party) {
-    val srv = servers.get(party - 1)
+    val srv = parties.get(party - 1).server
     return srv.replicator
   }
   
   def void send(int party, Message msg) {
-    client.send(quorum.getPartyAddress(party), msg)
+    val qParty = parties.get(party - 1)
+    client.send(qParty.party.address, msg)
   }
   
   def void start((Integer, Message)=>void handler, ()=>void startTest) {
