@@ -19,3 +19,8 @@
         1Pa   1Pa   1Pa   2Pb
         1Ua   1Ua   
     R               1Ua   1Ua(n - t)
+
+    ON-REPLICATE: (q=1, to=[MCowBQYDK2VwAyEAOo9kRln9NirCQoFWT/rhuB4bB/3g0Jcu6X15hjXSYPI=, MCowBQYDK2VwAyEAFbbAOm/1m2+aga6mcuXz521v1bykyJfA7Rjg3fKH2fM=, MCowBQYDK2VwAyEAAxXSiNHr1gunCemHrT7HEPbVoCfQ2yhNOFKqmFNaI5A=, MCowBQYDK2VwAyEA0e+xglgTVIB9azuKFVIiu364UFwfqvQEmFTZ1i1rqsk=], msg=(id=0, type=INSERT, udi=admin, rec=wleSKXrJ0HxAF6acihLdTMiqawJlUJjxUrYA+UEB9+Q=, type=quorum, replicas=1)) -> 8
+    ON-REPLICATE: (q=1, to=[MCowBQYDK2VwAyEAOo9kRln9NirCQoFWT/rhuB4bB/3g0Jcu6X15hjXSYPI=, MCowBQYDK2VwAyEAFbbAOm/1m2+aga6mcuXz521v1bykyJfA7Rjg3fKH2fM=, MCowBQYDK2VwAyEAAxXSiNHr1gunCemHrT7HEPbVoCfQ2yhNOFKqmFNaI5A=, MCowBQYDK2VwAyEA0e+xglgTVIB9azuKFVIiu364UFwfqvQEmFTZ1i1rqsk=], msg=(id=5, type=UPDATE, udi=admin, rec=wleSKXrJ0HxAF6acihLdTMiqawJlUJjxUrYA+UEB9+Q=, q=0, index=1, f=7OBZQzQfEG+Po50quMbuf+doUdc+S0KWnkDxsUlBFgs=, round=2, votes=3, replicas=1)) -> 9
+    ON-REPLICATE: (q=1, to=[MCowBQYDK2VwAyEAOo9kRln9NirCQoFWT/rhuB4bB/3g0Jcu6X15hjXSYPI=, MCowBQYDK2VwAyEAFbbAOm/1m2+aga6mcuXz521v1bykyJfA7Rjg3fKH2fM=, MCowBQYDK2VwAyEAAxXSiNHr1gunCemHrT7HEPbVoCfQ2yhNOFKqmFNaI5A=, MCowBQYDK2VwAyEA0e+xglgTVIB9azuKFVIiu364UFwfqvQEmFTZ1i1rqsk=], msg=(id=1, type=INSERT, udi=udi-1, rec=ITA7YWfRjTBrqu0i/FhcOZJf8L6qOWaibMFk8tIh9+s=, type=test, replicas=1)) -> 10
+    ON-REPLICATE: (q=1, to=[MCowBQYDK2VwAyEAOo9kRln9NirCQoFWT/rhuB4bB/3g0Jcu6X15hjXSYPI=, MCowBQYDK2VwAyEAFbbAOm/1m2+aga6mcuXz521v1bykyJfA7Rjg3fKH2fM=, MCowBQYDK2VwAyEAAxXSiNHr1gunCemHrT7HEPbVoCfQ2yhNOFKqmFNaI5A=, MCowBQYDK2VwAyEA0e+xglgTVIB9azuKFVIiu364UFwfqvQEmFTZ1i1rqsk=], msg=(id=0, type=INSERT, udi=udi-1, rec=3z9hmASpL9tAVxktxD3XSOp3itxSvEmM6AUkwBS4ERk=, type=quorum, replicas=1)) -> 13

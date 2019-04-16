@@ -16,6 +16,7 @@ import pt.ieeta.bft4pnt.msg.Update
 import static extension bft4pnt.test.utils.WaiterAssertExtensions.*
 import pt.ieeta.bft4pnt.spi.StoreManager
 import java.util.concurrent.atomic.AtomicReference
+import pt.ieeta.bft4pnt.spi.Store
 
 class QuorumChangeTest {
   
@@ -29,7 +30,10 @@ class QuorumChangeTest {
         2Uq   2Uq         2Uq   OK
     -----------------------------
         x3Pb
-    R
+        R1    R2    R3
+    -----------------------------
+              4Pq   4Pq   4Pq   4Pq
+              4Uq   4Uq   4Uq   4Uq
     */
     
     val ok = new AtomicBoolean(false)
@@ -40,11 +44,58 @@ class QuorumChangeTest {
     val udi = "udi-1"
     val d1 = new Data("d1")
     val d2 = new Data("d2")
+    val q2 = new Data(1)
     
     val insert = Insert.create(1L, udi, "test", new Data("data-i"))
+    val qInsert = Insert.create(0L, "udi-1", Store.QUORUM_ALIAS, new Data(0))
+    
     val pa1 = Propose.create(2L, udi, insert.record.fingerprint, d1.fingerprint, 1, 1L)
     val pb3 = Propose.create(6L, udi, insert.record.fingerprint, d2.fingerprint, 2, 3L)
+    val pq4 = Propose.create(7L, udi, qInsert.record.fingerprint, q2.fingerprint, 1, 4L)
     val qp = new AtomicReference<Message>
+    
+    net.replicator(1).onReplicate = [ quorum, parties, msg |
+      counter.incrementAndGet
+      println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+    ]
+    
+    net.replicator(1).onReply = [
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«strParty», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 32) {
+        println('''----------------START-REP 2----------------''')
+        net.replicator(2).replicate
+      }
+    ]
+    
+    net.replicator(2).onReplicate = [ quorum, parties, msg |
+      counter.incrementAndGet
+      println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+    ]
+    
+    net.replicator(2).onReply = [
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«strParty», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 52) {
+        println('''----------------START-REP 3----------------''')
+        net.replicator(3).replicate
+      }
+    ]
+    
+    net.replicator(3).onReplicate = [ quorum, parties, msg |
+      counter.incrementAndGet
+      println('''ON-REPLICATE: (q=«quorum», to=«parties», msg=«msg») -> «counter.get»''')
+    ]
+    
+    net.replicator(3).onReply = [
+      counter.incrementAndGet
+      println('''ON-REPLY: (party=«strParty», type=«type», update=«propose !== null») -> «counter.get»''')
+      if (counter.get == 67) {
+        println('''----------------END-REP 3----------------''')
+        for (sendTo : 2 .. 5)
+          net.send(sendTo, pq4)
+      }
+    ]
     
     val voteReplies = new ConcurrentHashMap<String, Message>
     net.start([ party, reply |
@@ -102,23 +153,48 @@ class QuorumChangeTest {
         net.replicator(1).replicate
       }
       
+      if (reply.id == 7L) {
+        waiter.assertVote(reply, 4L)
+        counter.incrementAndGet
+        
+        val rVote = reply.body as Reply
+        voteReplies.put(rVote.strParty, reply)
+        if (voteReplies.size == 4) {
+          Propose.create(7L, udi, qInsert.record.fingerprint, q2.fingerprint, 1, 4L)
+          val uq4 = Update.create(8L, udi, qInsert.record.fingerprint, 1, pq4.body as Propose, voteReplies, q2)
+          for (sendTo : 2 .. 5)
+            net.send(sendTo, uq4)
+          voteReplies.clear
+        }
+      }
+      
+      if (reply.id == 8L) {
+        waiter.assertAck(reply)
+        counter.incrementAndGet
+      }
+      
+      if (counter.get == 75) {
+        ok.set = true
+        waiter.resume
+      }
+      
     ], [
       for (party : 1 .. 4)
         net.send(party, insert)
     ])
     
-    waiter.await(400000)
+    waiter.await(4000)
     waiter.assertTrue(ok.get)
   }
   
-  @Test
+  /*@Test
   def void testEvolutionFail() {
-    /*  1     2     3     4     5
+    /  1     2     3     4     5
         1Pa   1Pa   1Pa         X
         1Ua   1Ua   2Pb   2Pb   X
     -----------------------------
         
-    */
+    /
     
     val ok = new AtomicBoolean(false)
     val waiter = new Waiter
@@ -179,5 +255,5 @@ class QuorumChangeTest {
     
     waiter.await(400000)
     waiter.assertTrue(ok.get)
-  }
+  }*/
 }

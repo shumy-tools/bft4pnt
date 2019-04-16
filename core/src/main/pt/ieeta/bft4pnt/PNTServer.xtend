@@ -116,11 +116,12 @@ class PNTServer {
         return;
       }
       
-      if (msg.record.udi != StoreManager.LOCAL_STORE && msg.data.integer !== q.index) {
+      //TODO: this constraint will block replication of messages from old quorums! Maybe we should have a differentiator of pure inserts from replicas!
+      /*if (msg.record.udi != StoreManager.LOCAL_STORE && msg.data.integer !== q.index) {
         logger.error("Submitted quorum index is different from the current one: (submitted={}, current={})", msg.data.integer, q.index)
         reply.apply(new Message(msg.record, Error.unauthorized("Submitted quorum index is different from the current one!")))
         return;
-      }
+      }*/
       
       // set the alias for the quorum record. For the global quorum and all stores.
       cs.setAlias(msg.record.fingerprint, Store.QUORUM_ALIAS)
@@ -209,13 +210,6 @@ class PNTServer {
     // the local store has the quorum information (not the index)
     if (msg.record.udi != StoreManager.LOCAL_STORE)
       if (record.type == Store.QUORUM_ALIAS) {
-        // accept all quorum index evolutions
-        if (msg.data.integer !== q.index) {
-          logger.error("Submitted quorum index is different from the current one: (submitted={}, current={})", msg.data.integer, q.index)
-          reply.apply(new Message(msg.record, Error.unauthorized("Submitted quorum index is different from the current one!")))
-          return;
-        }
-        
         // accept the quorum index evolution if there are no pending replicas in the store 
         val pending = cs.numberOfPendingReplicas(q.n - q.t)
         if (pending !== 0) {
@@ -223,7 +217,6 @@ class PNTServer {
           reply.apply(new Message(msg.record, Error.unauthorized("Pending replicas on this store!")))
           return;
         }
-        
       } else if (q.index !== cs.quorumIndex) {
         // if the store is not in the current quorum index, it cannot accept the propose
         logger.error("Store in incorrect quorum: (index={}, store={})", q.index, cs.quorumIndex)
@@ -271,6 +264,13 @@ class PNTServer {
       reply.apply(new Message(msg.record, Error.unauthorized("Non existent quorum!")))
       return;
     } 
+    
+    //TODO: this constraint will block replication of messages from old quorums! Maybe we should have a differentiator of pure inserts from replicas!
+    /*if (msg.record.udi != StoreManager.LOCAL_STORE && record.type == Store.QUORUM_ALIAS && msg.data.integer !== q.index) {
+      logger.error("Submitted quorum index is different from the current one: (submitted={}, current={})", msg.data.integer, q.index)
+      reply.apply(new Message(msg.record, Error.unauthorized("Submitted quorum index is different from the current one!")))
+      return;
+    }*/
     
     // votes with valid signatures with the exact same content structure?
     val parties = new HashSet<String>
@@ -475,24 +475,18 @@ class Replicator {
     val q = db.store.currentQuorum
     
     // process quorum state first
+    val replicated = new HashSet<String>
     val qRec = db.store.local.getRecordFromAlias(Store.QUORUM_ALIAS)
     for (msg : qRec.history) {
-      val toRep = q.toReplicate(msg)
-      q.replicate(msg, toRep)
+      q.replicate(msg)
+      replicated.add(msg.key)
     }
     
     // process and transmit should be separated procedures. The asynchronous replies from the transmission can change the msg.replicas
     val pendings = db.store.pendingReplicas(q.n)
-    for (msg : pendings) {
-      try {
-        // process pendings
-        val toRep = q.toReplicate(msg)
-        q.replicate(msg, toRep)
-      } catch(Throwable ex) {
-        ex.printStackTrace
-        logger.error("Failed to replicate message: {}", msg)
-      }
-    }
+    for (msg : pendings)
+      if (!replicated.contains(msg.key))
+        q.replicate(msg)
   }
   
   package def void reply(Message msg) {
@@ -526,7 +520,7 @@ class Replicator {
     }
   }
   
-  private def Set<String> toReplicate(Quorum q, Message msg) {
+  private def void replicate(Quorum q, Message msg) {
     val toReplicate = new HashSet<String>
     for(party : q.allParties) {
       //TODO: ignore parties that are non-responsive?
@@ -543,15 +537,25 @@ class Replicator {
         toReplicate.add(party)
     }
     
-    return toReplicate
-  }
-  
-  private def void replicate(Quorum q, Message msg, Set<String> toReplicate) {
     onReplicate.get?.apply(q.index, toReplicate, msg)
     for(party : toReplicate) {
-      logger.info("REPLICATE: {} -> {}", msg, party)
-      val inet = q.getPartyAddress(party)
-      broker.send(inet, msg)
+      try {
+        logger.info("REPLICATE: {} -> {}", msg, party)
+        val inet = q.getPartyAddress(party)
+        broker.send(inet, msg)
+      } catch(Throwable ex) {
+        ex.printStackTrace
+        logger.error("Failed to replicate quorum message: {}", msg)
+      }
     }
+  }
+  
+  private def String key(Message msg) {
+    var key = '''«msg.record.udi»-«msg.record.fingerprint»'''
+    if (msg.type === Message.Type.UPDATE) {
+      val update = msg.body as Update
+      key += '''-«update.quorum»-«update.propose.index»-«update.propose.fingerprint»-«update.propose.round»-«update.votes.size»'''
+    }
+    key
   }
 }
