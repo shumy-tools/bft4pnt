@@ -11,39 +11,40 @@ class Reply implements ISection {
   enum Type { VOTE, NO_DATA, RECEIVING, ACK }
   
   public val Type type
+  public val Integer quorum
   public val PublicKey party
   
   public val Propose propose
   public val byte[] replica // is the signature of the (insert, update) message
   
-  static def Reply vote(PublicKey party, Propose propose) {
-    return new Reply(Type.VOTE, party, propose, null)
+  static def Reply vote(Integer quorum, PublicKey party, Propose propose) {
+    return new Reply(Type.VOTE, quorum, party, propose, null)
   }
   
-  static def Reply noData(PublicKey party) {
-    return new Reply(Type.NO_DATA, party, null, null)
+  static def Reply noData(Integer quorum, PublicKey party) {
+    return new Reply(Type.NO_DATA, quorum, party, null, null)
   }
   
-  static def Reply noData(PublicKey party, Propose propose) {
-    return new Reply(Type.NO_DATA, party, propose, null)
+  static def Reply noData(Integer quorum, PublicKey party, Propose propose) {
+    return new Reply(Type.NO_DATA, quorum, party, propose, null)
   }
   
   
-  static def Reply receiving(PublicKey party) {
-    return new Reply(Type.RECEIVING, party, null, null)
+  static def Reply receiving(Integer quorum, PublicKey party) {
+    return new Reply(Type.RECEIVING, quorum, party, null, null)
   }
     
-  static def Reply receiving(PublicKey party, Propose propose) {
-    return new Reply(Type.RECEIVING, party, propose, null)
+  static def Reply receiving(Integer quorum, PublicKey party, Propose propose) {
+    return new Reply(Type.RECEIVING, quorum, party, propose, null)
   }
   
   
-  static def Reply ack(PublicKey party, byte[] replica) {
-    return new Reply(Type.ACK, party, null, replica)
+  static def Reply ack(Integer quorum, PublicKey party, byte[] replica) {
+    return new Reply(Type.ACK, quorum, party, null, replica)
   }
   
-  static def Reply ack(PublicKey party, Propose propose, byte[] replica) {
-    return new Reply(Type.ACK, party, propose, replica)
+  static def Reply ack(Integer quorum, PublicKey party, Propose propose, byte[] replica) {
+    return new Reply(Type.ACK, quorum, party, propose, replica)
   }
   
   def String strParty() {
@@ -52,6 +53,7 @@ class Reply implements ISection {
   
   override write(ByteBuf buf) {
     buf.writeShort(type.ordinal)
+    buf.writeInt(quorum)
     Message.writeBytes(buf, party.encoded)
     
     if (propose !== null) {
@@ -66,6 +68,7 @@ class Reply implements ISection {
   static def Reply read(ByteBuf buf) {
     val typeIndex = buf.readShort as int
     val type = Type.values.get(typeIndex)
+    val quorum = buf.readInt
     val party = Message.readBytes(buf)
     
     val hasPropose = buf.readBoolean
@@ -73,6 +76,6 @@ class Reply implements ISection {
     
     val replica = Message.readBytes(buf)
     
-    return new Reply(type, KeyPairHelper.read(party), propose, replica)
+    return new Reply(type, quorum, KeyPairHelper.read(party), propose, replica)
   }
 }

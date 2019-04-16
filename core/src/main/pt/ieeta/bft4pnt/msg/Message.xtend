@@ -170,8 +170,8 @@ class Message {
   }
   
   static def ReadResult read(ByteBuf buf) {
-    buf.retain
     try {
+      buf.retain
       val block = buf.signedBlock
       val id = buf.readLong // id is not part of the message signature
       

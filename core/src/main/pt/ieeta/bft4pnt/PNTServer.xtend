@@ -136,15 +136,15 @@ class PNTServer {
       val stored = record.getCommit(0)
       q.copyReplicas(msg, stored)
       
-      val rep = msg.setLocalReplica(keys)
-      reply.apply(new Message(msg.record, Reply.ack(keys.public, rep.signature)))
+      val rep = stored.setLocalReplica(keys)
+      reply.apply(new Message(msg.record, Reply.ack(q.index, keys.public, rep.signature)))
       return;
     }
     
     val has = msg.data.has(msg.record.fingerprint)
     switch has {
-      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(keys.public)))
-      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(keys.public)))
+      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(q.index, keys.public)))
+      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(q.index, keys.public)))
       case Data.Status.YES: {
         // verify record fingerprint
         if (msg.record.fingerprint != msg.data.fingerprint) {
@@ -181,7 +181,7 @@ class PNTServer {
           return
         }
         
-        reply.apply(new Message(msg.record, Reply.ack(keys.public, rep.signature)))
+        reply.apply(new Message(msg.record, Reply.ack(q.index, keys.public, rep.signature)))
       }
     }
   }
@@ -241,7 +241,7 @@ class PNTServer {
       }
     }
     
-    val vote = new Message(msg.record, Reply.vote(keys.public, body))
+    val vote = new Message(msg.record, Reply.vote(q.index, keys.public, body))
     record.vote = vote
     reply.apply(vote)
   }
@@ -278,7 +278,7 @@ class PNTServer {
       parties.add(vote.strSource)
       
       // an update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
-      val rVote = Reply.vote(vote.source, body.propose)
+      val rVote = Reply.vote(body.quorum, vote.source, body.propose)
       val vMsg = new Message(msg.version, msg.record, rVote)
       val data = Message.getSignedBlock(vMsg.write)
       
@@ -304,23 +304,23 @@ class PNTServer {
     }
     
     // conflicting commits can only be overridden by other commits of higher rounds.
-    val update = record.getCommit(body.propose.index)
-    if (update !== null) {
-      val updateBody = update.body as Update
+    val stored = record.getCommit(body.propose.index)
+    if (stored !== null) {
+      val storedBody = stored.body as Update
       
       // update may already exist in a replication process or client re-submission
-      if (updateBody.propose.fingerprint == body.propose.fingerprint && updateBody.propose.round === body.propose.round) {
-        logger.info("Update already exists: (index={}, fingerprint={}, round={})", updateBody.propose.index, updateBody.propose.fingerprint, updateBody.propose.round)
+      if (storedBody.propose.fingerprint == body.propose.fingerprint && storedBody.propose.round === body.propose.round) {
+        logger.info("Update already exists: (index={}, fingerprint={}, round={})", storedBody.propose.index, storedBody.propose.fingerprint, storedBody.propose.round)
         
         // proceed to up-date the local representation of the commit message with the new replicas of the received message
-        q.copyReplicas(msg, update)
+        q.copyReplicas(msg, stored)
         
-        val rep = msg.setLocalReplica(keys)
-        reply.apply(new Message(msg.record, Reply.ack(keys.public, body.propose, rep.signature)))
+        val rep = stored.setLocalReplica(keys)
+        reply.apply(new Message(msg.record, Reply.ack(body.quorum, keys.public, body.propose, rep.signature)))
         return;
-      } else if (updateBody.propose.round >= body.propose.round) {
+      } else if (storedBody.propose.round >= body.propose.round) {
         // doesn't accept the commit even if the Dk fingerprint is the same. The correct round should be replicated otherwise the replica signature will fail.
-        reply.apply(update)
+        reply.apply(stored)
         return;
       }
     } else { // ignore propose rules if it already has a commit
@@ -347,8 +347,8 @@ class PNTServer {
     // parties only accept proposals if the data for the current fingerprint is safe in the local storage.
     val has = msg.data.has(body.propose.fingerprint)
     switch has {
-      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(keys.public, body.propose)))
-      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(keys.public, body.propose)))
+      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(body.quorum, keys.public, body.propose)))
+      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(body.quorum, keys.public, body.propose)))
       case Data.Status.YES: {
         // verify update fingerprint
         if (body.propose.fingerprint != msg.data.fingerprint) {
@@ -385,7 +385,7 @@ class PNTServer {
           return
         }
         
-        reply.apply(new Message(msg.record, Reply.ack(keys.public, body.propose, rep.signature)))
+        reply.apply(new Message(msg.record, Reply.ack(body.quorum, keys.public, body.propose, rep.signature)))
       }
     }
   }
