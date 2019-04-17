@@ -4,6 +4,7 @@ import bft4pnt.test.utils.InitQuorum
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import net.jodah.concurrentunit.Waiter
 import org.junit.jupiter.api.Test
 import pt.ieeta.bft4pnt.msg.Data
@@ -12,11 +13,10 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
+import pt.ieeta.bft4pnt.spi.Store
+import pt.ieeta.bft4pnt.spi.StoreManager
 
 import static extension bft4pnt.test.utils.WaiterAssertExtensions.*
-import pt.ieeta.bft4pnt.spi.StoreManager
-import java.util.concurrent.atomic.AtomicReference
-import pt.ieeta.bft4pnt.spi.Store
 
 class QuorumChangeTest {
   

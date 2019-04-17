@@ -7,15 +7,15 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.HashMap
 import java.util.List
-import java.util.SortedMap
 import java.util.TreeMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import java.util.Map
 
 class Quorum implements ISection {
   public val int index
   public val int t
-  public val SortedMap<String, QuorumParty> parties
+  public val Map<String, QuorumParty> parties
   
   def getN() { parties.size }
   
@@ -27,7 +27,7 @@ class Quorum implements ISection {
     for (qP : qParties)
       parties.put(KeyPairHelper.encode(qP.key), qP)
     
-    this.parties = Collections.unmodifiableSortedMap(parties)
+    this.parties = Collections.unmodifiableMap(parties)
     
     if (n < 2*t + 1)
       throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')

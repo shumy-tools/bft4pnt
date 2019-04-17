@@ -100,6 +100,10 @@ class PNTServer {
     ]
   }
   
+  def void stop() {
+    broker.stop
+  }
+  
   dispatch private def void handle(Store cs, Message msg, Insert body, (Message)=>void reply) {
     // get the quorum record
     val q = if (msg.record.udi == StoreManager.LOCAL_STORE && body.type == Store.QUORUM_ALIAS) {
@@ -280,19 +284,24 @@ class PNTServer {
       // an update commit is only valid if it has (n−t) reply votes from different parties with exactly the same content structure (F, C, Ik, Dk, Ra).
       val rVote = Reply.vote(body.quorum, vote.source, body.propose)
       val vMsg = new Message(msg.version, msg.record, rVote)
-      val data = Message.getSignedBlock(vMsg.write)
       
-      val key = msgQ.getPartyKey(vote.strSource)
-      if (key === null) {
-        logger.error("Invalid party (party={})", vote.strSource)
-        reply.apply(new Message(msg.record, Error.invalid("Invalid party!")))
-        return;
-      }
-      
-      if (!SignatureHelper.verify(key, data, vote.signature)) {
-        logger.error("Invalid vote (party={}, vote={})", vote.strSource, SignatureHelper.encode(vote.signature))
-        reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
-        return;
+      val dBuf = vMsg.write
+      try {
+        val data = Message.getSignedBlock(dBuf)
+        val key = msgQ.getPartyKey(vote.strSource)
+        if (key === null) {
+          logger.error("Invalid party (party={})", vote.strSource)
+          reply.apply(new Message(msg.record, Error.invalid("Invalid party!")))
+          return;
+        }
+        
+        if (!SignatureHelper.verify(key, data, vote.signature)) {
+          logger.error("Invalid vote (party={}, vote={})", vote.strSource, SignatureHelper.encode(vote.signature))
+          reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
+          return;
+        }
+      } finally {
+        dBuf.release
       }
     }
     

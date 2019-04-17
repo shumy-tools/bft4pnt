@@ -5,14 +5,17 @@ import io.netty.buffer.ByteBuf
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
+import io.netty.channel.ChannelOption
+import io.netty.channel.FixedRecvByteBufAllocator
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.DatagramPacket
 import io.netty.channel.socket.nio.NioDatagramChannel
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicReference
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
-import java.util.concurrent.atomic.AtomicReference
+import io.netty.buffer.PooledByteBufAllocator
 
 @FinalFieldsConstructor
 class IncommingPacketHandler extends SimpleChannelInboundHandler<DatagramPacket> {
@@ -35,15 +38,12 @@ class BrokerInitializer extends ChannelInitializer<NioDatagramChannel> {
   }
 }
 
+@FinalFieldsConstructor
 class DataBroker {
   static val logger = LoggerFactory.getLogger(DataBroker.simpleName)
   
   val InetSocketAddress address
   val channel = new AtomicReference<Channel>
-  
-  new(InetSocketAddress address) {
-    this.address = address
-  }
   
   def isReady() { channel.get !== null }
   
@@ -51,12 +51,17 @@ class DataBroker {
     new Thread[
       Thread.currentThread.name = "MessageBroker-Thread"
       
-      val group = new NioEventLoopGroup
+      val group = new NioEventLoopGroup(10)
       try {
         val b = new Bootstrap => [
           group(group)
           channel(NioDatagramChannel)
           handler(new BrokerInitializer(handler))
+          
+          //TODO: improve buffer received to a dynamic allocator?
+          option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(16384))
+          option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+          option(ChannelOption.SO_REUSEADDR, true)
         ]
         
         channel.set = b.bind(address).sync.channel
@@ -67,9 +72,16 @@ class DataBroker {
       } catch(Throwable ex) {
         ex.printStackTrace
       } finally {
-        group.shutdownGracefully
+        group.shutdownGracefully.await
+        Thread.currentThread.interrupt
+        channel.set = null
       }
     ].start
+  }
+  
+  def void stop() {
+    if (channel.get !== null)
+      channel.get.close.await
   }
   
   def void send(InetSocketAddress target, ByteBuf data) {

@@ -48,6 +48,10 @@ class MessageBroker {
     ]
   }
   
+  def void stop() {
+    db.stop
+  }
+  
   def void send(InetSocketAddress inetTarget, Message msg) {
     //TODO: encrypt message?
     val data = msg.write(keys)

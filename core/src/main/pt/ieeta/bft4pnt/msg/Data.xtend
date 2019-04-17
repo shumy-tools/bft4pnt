@@ -1,9 +1,9 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
+import io.netty.buffer.PooledByteBufAllocator
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.DigestHelper
-import java.nio.ByteBuffer
 
 @FinalFieldsConstructor
 class Data implements ISection {
@@ -70,7 +70,14 @@ class Data implements ISection {
     this.fingerprint = switch type {
       case EMPTY: {} //do nothing
       case RAW: DigestHelper.digest(obj as byte[])
-      case INTEGER: DigestHelper.digest(ByteBuffer.allocate(4).putInt(obj as Integer).array)
+      case INTEGER: {
+        val buf = PooledByteBufAllocator.DEFAULT.buffer(1024).writeInt(obj as Integer)
+        try {
+          DigestHelper.digest(buf)
+        } finally {
+          buf.release
+        }
+      }
       case STRING: DigestHelper.digest(obj as String)
       case SECTION: DigestHelper.digest(obj as ISection)
       case FILE: {} //TODO: get fingerprint from the file manager

@@ -136,37 +136,27 @@ class Message {
   
   def ByteBuf write(KeyPair keys) {
     val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
-    try {
-      buf.retain
-      write(buf)
-      val block = buf.signedBlock
+    write(buf)
+    val block = buf.signedBlock
+    
+    signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
+    signature.write(buf)
+    
+    if (type === Type.INSERT || type === Type.UPDATE) {
+      data.write(buf)
       
-      signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
-      signature.write(buf)
-      
-      if (type === Type.INSERT || type === Type.UPDATE) {
-        data.write(buf)
-        
-        buf.writeInt(replicas.size)
-        for (rep : replicas)
-          rep.write(buf)
-      }
-      
-      return buf
-    } finally {
-      buf.release
+      buf.writeInt(replicas.size)
+      for (rep : replicas)
+        rep.write(buf)
     }
+    
+    return buf
   }
   
   def ByteBuf write() {
     val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
-    try {
-      buf.retain
-      write(buf)
-      return buf
-    } finally {
-      buf.release
-    }
+    write(buf)
+    return buf
   }
   
   static def ReadResult read(ByteBuf buf) {

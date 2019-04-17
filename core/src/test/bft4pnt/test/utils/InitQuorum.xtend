@@ -19,6 +19,7 @@ import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
 import org.eclipse.xtend.lib.annotations.Accessors
+import org.slf4j.LoggerFactory
 
 @FinalFieldsConstructor
 class InitQuorumParty {
@@ -28,6 +29,8 @@ class InitQuorumParty {
 
 @FinalFieldsConstructor
 class InitQuorum {
+  static val logger = LoggerFactory.getLogger(InitQuorum.simpleName)
+  
   static val (Message)=>boolean authorizer = [ true ]
   
   val int port
@@ -113,7 +116,7 @@ class InitQuorum {
       }
       
       if (counter.get === 2*quorum.n) {
-        println("Quorum set, starting test.")
+        logger.info("Quorum set, starting test.")
         startTest.apply
       }
       
@@ -125,5 +128,9 @@ class InitQuorum {
     val insert = Insert.create(0L, StoreManager.LOCAL_STORE, Store.QUORUM_ALIAS, new Data(quorum))
     for (party : 1 .. quorum.n)
       send(party, insert)
+  }
+  
+  def void stop() {
+    parties.forEach[server.stop]
   }
 }
