@@ -3,7 +3,7 @@ package pt.ieeta.bft4pnt.msg
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
 import java.nio.charset.StandardCharsets
-import java.security.KeyPair
+import java.security.PublicKey
 import java.util.ArrayList
 import java.util.Collections
 import java.util.HashMap
@@ -12,9 +12,7 @@ import java.util.List
 import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.spi.StoreManager
-import java.security.PublicKey
 
 class Message {
   static val DEFAULT_BUF_CAP = 4096
@@ -74,9 +72,11 @@ class Message {
     }
   }
   
-  def Signature setLocalReplica(KeyPair keys) {
-    val replicaSig = SignatureHelper.sign(keys.private, sigSlice)
-    val rep = new Signature(keys.public, replicaSig)
+  def Signature setLocalReplica(PublicKey pubKey, java.security.Signature signer) {
+    val rep = synchronized(signer) {
+      signer.update(sigSlice.data, sigSlice.offset, sigSlice.length)
+      new Signature(pubKey, signer.sign)
+    }
     
     addReplica(rep)
     return rep
@@ -139,12 +139,16 @@ class Message {
       sigSlice = buf.signedBlock
   }
   
-  def ByteBuf write(KeyPair keys) {
+  def ByteBuf write(PublicKey pubKey, java.security.Signature signer) {
     val buf = PooledByteBufAllocator.DEFAULT.buffer(DEFAULT_BUF_CAP)
     write(buf)
     
     if (signature === null)
-      signature = new Signature(keys.public, SignatureHelper.sign(keys.private, sigSlice))
+      synchronized(signer) {
+        signer.update(sigSlice.data, sigSlice.offset, sigSlice.length)
+        signature = new Signature(pubKey, signer.sign)
+      }
+    
     signature.write(buf)
     
     if (type === Type.INSERT || type === Type.UPDATE) {

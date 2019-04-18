@@ -5,7 +5,6 @@ import java.security.PublicKey
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.DigestHelper
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
 //@FinalFieldsConstructor
 class Signature implements ISection {
@@ -21,7 +20,12 @@ class Signature implements ISection {
   }
   
   def verify(ArraySlice slice) {
-    SignatureHelper.verify(source, slice, signature)
+    val verifier = java.security.Signature.getInstance("Ed25519", "BC") => [
+      initVerify(source)
+      update(slice.data, slice.offset, slice.length)
+    ]
+    
+    return verifier.verify(signature)
   }
   
   override write(ByteBuf buf) {

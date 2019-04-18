@@ -1,5 +1,6 @@
 package pt.ieeta.bft4pnt
 
+import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.util.HashSet
 import java.util.Set
@@ -7,10 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import org.bouncycastle.util.encoders.Base64
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Get
@@ -32,6 +33,7 @@ class PNTServer {
   
   //val String party
   val KeyPair keys
+  val java.security.Signature signer
   
   val PntDatabase db
   val MessageBroker broker
@@ -44,6 +46,9 @@ class PNTServer {
   new(KeyPair keys, String dbName, MessageBroker broker, (Message)=>boolean authorizer) {
     //this.party = KeyPairHelper.encode(keys.public)
     this.keys = keys
+    this.signer = java.security.Signature.getInstance("Ed25519", "BC") => [
+      initSign(keys.private)
+    ]
     
     this.db = PntDatabase.get(dbName)
     this.broker = broker
@@ -140,7 +145,7 @@ class PNTServer {
       val stored = record.getCommit(0)
       q.copyReplicas(msg, stored)
       
-      val rep = stored.setLocalReplica(keys)
+      val rep = stored.setLocalReplica(keys.public, signer)
       reply.apply(new Message(msg.record, Reply.ack(q.index, keys.public, rep.signature)))
       return;
     }
@@ -175,7 +180,7 @@ class PNTServer {
           }
         }
         
-        val rep = msg.setLocalReplica(keys)
+        val rep = msg.setLocalReplica(keys.public, signer)
         try {
           cs.insert(msg) // execute storage
         } catch (Throwable ex) {
@@ -287,15 +292,14 @@ class PNTServer {
       
       val dBuf = vMsg.write
       try {
-        val key = msgQ.getPartyKey(vote.strSource)
-        if (key === null) {
+        if (!msgQ.contains(vote.strSource)) {
           logger.error("Invalid party (party={})", vote.strSource)
           reply.apply(new Message(msg.record, Error.invalid("Invalid party!")))
           return;
         }
         
-        if (!SignatureHelper.verify(key, vMsg.sigSlice, vote.signature)) {
-          logger.error("Invalid vote (party={}, vote={})", vote.strSource, SignatureHelper.encode(vote.signature))
+        if (!vote.verify(vMsg.sigSlice)) {
+          logger.error("Invalid vote (party={}, vote={})", vote.strSource, new String(Base64.encode(vote.signature), StandardCharsets.UTF_8))
           reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
           return;
         }
@@ -323,7 +327,7 @@ class PNTServer {
         // proceed to up-date the local representation of the commit message with the new replicas of the received message
         q.copyReplicas(msg, stored)
         
-        val rep = stored.setLocalReplica(keys)
+        val rep = stored.setLocalReplica(keys.public, signer)
         reply.apply(new Message(msg.record, Reply.ack(body.quorum, keys.public, body.propose, rep.signature)))
         return;
       } else if (storedBody.propose.round >= body.propose.round) {
@@ -383,7 +387,7 @@ class PNTServer {
           }
         }
         
-        val rep = msg.setLocalReplica(keys)
+        val rep = msg.setLocalReplica(keys.public, signer)
         try {
           record.update(msg) // execute storage
         } catch (Throwable ex) {

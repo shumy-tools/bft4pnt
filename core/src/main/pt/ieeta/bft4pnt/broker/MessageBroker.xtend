@@ -1,12 +1,13 @@
 package pt.ieeta.bft4pnt.broker
 
+import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
 import java.security.KeyPair
+import java.security.Signature
+import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
-import java.util.concurrent.atomic.AtomicReference
-import io.netty.buffer.ByteBuf
 
 class MessageBroker {
   static val logger = LoggerFactory.getLogger(MessageBroker.simpleName)
@@ -15,9 +16,15 @@ class MessageBroker {
   val DataBroker db
   val KeyPair keys
   
+  val Signature signer
+  
   new(InetSocketAddress address, KeyPair keys) {
     this.db = new DataBroker(address)
     this.keys = keys
+    
+    this.signer = Signature.getInstance("Ed25519", "BC") => [
+      initSign(keys.private)
+    ]
   }
   
   def isReady() { db.ready }
@@ -32,7 +39,7 @@ class MessageBroker {
         val result = Message.read(data)
         if (result.hasError) {
           logger.error("MSG-ERROR: {}", result.error.msg)
-          val error = result.error.toMessage.write(keys)
+          val error = result.error.toMessage.write(keys.public, signer)
           db.send(inetSource, error)
           return;
         }
@@ -44,7 +51,7 @@ class MessageBroker {
         ex.printStackTrace
         
         val error = Error.internal(ex.message)
-        db.send(inetSource, error.toMessage.write(keys))
+        db.send(inetSource, error.toMessage.write(keys.public, signer))
       }
     ]
   }
@@ -55,7 +62,7 @@ class MessageBroker {
   
   def void send(InetSocketAddress inetTarget, Message msg) {
     //TODO: encrypt message?
-    val data = msg.write(keys)
+    val data = msg.write(keys.public, signer)
     
     while (!db.ready)
       Thread.sleep(100)
@@ -65,7 +72,7 @@ class MessageBroker {
   }
   
   def ByteBuf write(Message msg) {
-    msg.write(keys)
+    msg.write(keys.public, signer)
   }
   
   def void directSend(InetSocketAddress inetTarget, ByteBuf data) {
