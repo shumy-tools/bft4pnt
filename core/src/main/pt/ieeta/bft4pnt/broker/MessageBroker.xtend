@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
 import java.util.concurrent.atomic.AtomicReference
+import io.netty.buffer.ByteBuf
 
 class MessageBroker {
   static val logger = LoggerFactory.getLogger(MessageBroker.simpleName)
@@ -61,6 +62,18 @@ class MessageBroker {
     
     db.send(inetTarget, data)
     log(msg)[logger.info("MSG-SENT: {} to {}", msg, '''«inetTarget.hostString»:«inetTarget.port»''')]
+  }
+  
+  def ByteBuf write(Message msg) {
+    msg.write(keys)
+  }
+  
+  def void directSend(InetSocketAddress inetTarget, ByteBuf data) {
+    while (!db.ready)
+      Thread.sleep(100)
+    
+    data.retain
+    db.send(inetTarget, data)
   }
   
   private def log(Message msg, ()=>void log) {

@@ -2,19 +2,22 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import java.security.PublicKey
-import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
-import pt.ieeta.bft4pnt.crypto.SignatureHelper
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.DigestHelper
+import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.crypto.SignatureHelper
 
-@FinalFieldsConstructor
+//@FinalFieldsConstructor
 class Signature implements ISection {
   public val PublicKey source
   public val byte[] signature
   
-  def String strSource() {
-    KeyPairHelper.encode(source)
+  public val String strSource
+  
+  new (PublicKey source, byte[] signature) {
+    this.source = source
+    this.signature = signature
+    this.strSource = KeyPairHelper.encode(source)
   }
   
   def verify(ArraySlice slice) {

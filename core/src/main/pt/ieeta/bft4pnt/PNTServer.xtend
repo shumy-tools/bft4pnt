@@ -287,7 +287,6 @@ class PNTServer {
       
       val dBuf = vMsg.write
       try {
-        val data = Message.getSignedBlock(dBuf)
         val key = msgQ.getPartyKey(vote.strSource)
         if (key === null) {
           logger.error("Invalid party (party={})", vote.strSource)
@@ -295,7 +294,7 @@ class PNTServer {
           return;
         }
         
-        if (!SignatureHelper.verify(key, data, vote.signature)) {
+        if (!SignatureHelper.verify(key, vMsg.sigSlice, vote.signature)) {
           logger.error("Invalid vote (party={}, vote={})", vote.strSource, SignatureHelper.encode(vote.signature))
           reply.apply(new Message(msg.record, Error.invalid("Invalid vote!")))
           return;

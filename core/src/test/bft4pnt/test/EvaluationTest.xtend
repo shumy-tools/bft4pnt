@@ -38,8 +38,7 @@ class EvaluationTest {
     System.setErr = outputFile("error.txt")
     */
     
-    
-    val nRuns = 4
+    val nRuns = 3
     val bRuns = 4
     
     println('''Eval inserts (one store / multiple records)''')
@@ -81,23 +80,27 @@ class EvaluationTest {
     net.start([ party, reply |
       waiter.assertTrue(reply.body instanceof Reply)
       replies.incrementAndGet
-      //println('''REPLY: «reply» -> «replies.get»''')
-    ], [
-      new Thread[
-        for (nIn : 1 .. batch) {
-          /*while (sent.get - replies.get > 1000) {
-            println('''DIF: «sent.get - replies.get»''')
-            Thread.sleep(100)
-          }*/
-          
-          val insert = Insert.create(msgID.incrementAndGet, udi, "eval", new Data(UUID.randomUUID.toString))
-          for (sendTo : 1 .. n) {
-            net.send(sendTo, insert)
-            sent.incrementAndGet
-          }
-        }
+      if (replies.get > n*batch) {
         waiter.resume
-      ].start
+        return;
+      }
+      
+      //println('''REPLY: «reply» -> «sent.get» / «replies.get»''')
+      if (replies.get == sent.get) {
+        val insert = Insert.create(msgID.incrementAndGet, udi, "eval", new Data(UUID.randomUUID.toString))
+        val buf = net.write(insert)
+        for (sendTo : 1 .. n) {
+          net.directSend(sendTo, buf)
+          sent.incrementAndGet
+        }
+        buf.release
+      }
+    ], [
+      val insert = Insert.create(msgID.incrementAndGet, udi, "eval", new Data(UUID.randomUUID.toString))
+      for (sendTo : 1 .. n) {
+        net.send(sendTo, insert)
+        sent.incrementAndGet
+      }
     ])
     
     waiter.await(1_000_000)
@@ -139,12 +142,13 @@ class EvaluationTest {
       if (rBody.type == Reply.Type.ACK && (counter.get + n) % (2*n) == 0) {
         round.incrementAndGet
         data.set = new Data(UUID.randomUUID.toString)
-        propose.set = Propose.create(0L, udi, insert.record.fingerprint, data.get.fingerprint, round.get as int, round.get)
+        propose.set = Propose.create(msgID.incrementAndGet, udi, insert.record.fingerprint, data.get.fingerprint, round.get as int, round.get)
+        
         //println('''PROPOSE: «propose.get» ''')
-        for (sendTo : 1 .. n) {
-          propose.get.id = msgID.incrementAndGet
-          net.send(sendTo, propose.get)
-        }
+        val buf = net.write(propose.get)
+        for (sendTo : 1 .. n)
+          net.directSend(sendTo, buf)
+        buf.release
       }
       
       // commit change
@@ -154,14 +158,17 @@ class EvaluationTest {
           val update = Update.create(msgID.incrementAndGet, udi, insert.record.fingerprint, 0, propose.get.body as Propose, voteReplies, data.get)
           //println('''UPDATE: «update» -> «updates.get»''')
           updates.incrementAndGet
+          
+          val buf = net.write(update)
           for (sendTo : 1 .. n)
-            net.send(sendTo, update)
+            net.directSend(sendTo, buf)
           voteReplies.clear
+          buf.release
         }
       }
     ], [
       for (sendTo : 1 .. n) {
-        insert.id = msgID.incrementAndGet 
+        insert.id = msgID.incrementAndGet
         net.send(sendTo, insert)
       }
     ])

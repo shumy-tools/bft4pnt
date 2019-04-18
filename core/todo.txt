@@ -12,3 +12,38 @@
  * Can we use a proposal for each store instead of each record?
  * Change the thread model using an asynchronous message processor? Also change the SPI to asynchronous?
  * The PNTServer propose handler accepts Quorum changes without verifying if all messages are replicated!
+ 
+ --last result--
+Eval inserts (one store / multiple records)
+  PARTIES=4
+    RUN-BATCH 1024 ON 2.092s
+    RUN-BATCH 2048 ON 3.367s
+    RUN-BATCH 4096 ON 5.641s
+    RUN-BATCH 8192 ON 10.788s
+    RUN-BATCH 16384 ON 22.352s
+  PARTIES=16
+    RUN-BATCH 1024 ON 4.391s
+    RUN-BATCH 2048 ON 8.716s
+    RUN-BATCH 4096 ON 17.517s
+    RUN-BATCH 8192 ON 34.766s
+    RUN-BATCH 16384 ON 69.274s
+  PARTIES=64
+    RUN-BATCH 1024 ON 17.41s
+    RUN-BATCH 2048 ON 35.604s
+    RUN-BATCH 4096 ON 70.623s
+    RUN-BATCH 8192 ON 284.954s
+    
+Eval updates (one store / one record)
+  PARTIES=4
+    RUN-BATCH 1024 ON 4.236s
+    RUN-BATCH 2048 ON 7.041s
+    RUN-BATCH 4096 ON 12.991s
+    RUN-BATCH 8192 ON 26.832s
+    RUN-BATCH 16384 ON 52.675s
+  PARTIES=16
+    RUN-BATCH 1024 ON 17.874s
+    RUN-BATCH 2048 ON 35.306s
+    RUN-BATCH 4096 ON 68.065s
+    RUN-BATCH 8192 ON 163.992s
+    
+    

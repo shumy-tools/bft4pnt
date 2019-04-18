@@ -20,6 +20,7 @@ import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
 import org.eclipse.xtend.lib.annotations.Accessors
 import org.slf4j.LoggerFactory
+import io.netty.buffer.ByteBuf
 
 @FinalFieldsConstructor
 class InitQuorumParty {
@@ -101,6 +102,15 @@ class InitQuorum {
   def void send(int party, Message msg) {
     val qParty = parties.get(party - 1)
     client.send(qParty.party.address, msg)
+  }
+  
+  def ByteBuf write(Message msg) {
+    client.write(msg)
+  }
+  
+  def void directSend(int party, ByteBuf data) {
+    val qParty = parties.get(party - 1)
+    client.directSend(qParty.party.address, data)
   }
   
   def void start((Integer, Message)=>void handler, ()=>void startTest) {

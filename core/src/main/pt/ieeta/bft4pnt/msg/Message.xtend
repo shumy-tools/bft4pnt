@@ -17,6 +17,8 @@ import pt.ieeta.bft4pnt.spi.StoreManager
 import java.security.PublicKey
 
 class Message {
+  static val DEFAULT_BUF_CAP = 4096
+  
   //WARNING: don't change the position of defined types.
   enum Type {
     INSERT, UPDATE, PROPOSE, REPLY, GET, ERROR
@@ -132,14 +134,17 @@ class Message {
     
     record.write(buf)
     body.write(buf)
+    
+    if (sigSlice === null)
+      sigSlice = buf.signedBlock
   }
   
   def ByteBuf write(KeyPair keys) {
-    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
+    val buf = PooledByteBufAllocator.DEFAULT.buffer(DEFAULT_BUF_CAP)
     write(buf)
-    val block = buf.signedBlock
     
-    signature = new Signature(keys.public, SignatureHelper.sign(keys.private, block))
+    if (signature === null)
+      signature = new Signature(keys.public, SignatureHelper.sign(keys.private, sigSlice))
     signature.write(buf)
     
     if (type === Type.INSERT || type === Type.UPDATE) {
@@ -154,7 +159,7 @@ class Message {
   }
   
   def ByteBuf write() {
-    val buf = PooledByteBufAllocator.DEFAULT.buffer(1024)
+    val buf = PooledByteBufAllocator.DEFAULT.buffer(DEFAULT_BUF_CAP)
     write(buf)
     return buf
   }

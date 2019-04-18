@@ -1,11 +1,9 @@
 package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
-import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import java.security.PublicKey
 import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 
-@FinalFieldsConstructor
 class Reply implements ISection {
   //WARNING: don't change the position of defined types.
   enum Type { VOTE, NO_DATA, RECEIVING, ACK }
@@ -16,6 +14,17 @@ class Reply implements ISection {
   
   public val Propose propose
   public val byte[] replica // is the signature of the (insert, update) message
+  
+  public val String strParty
+  
+  new (Type type, Integer quorum, PublicKey party, Propose propose, byte[] replica) {
+    this.type = type
+    this.quorum = quorum
+    this.party = party
+    this.propose = propose
+    this.replica = replica
+    this.strParty = KeyPairHelper.encode(party)
+  }
   
   static def Reply vote(Integer quorum, PublicKey party, Propose propose) {
     return new Reply(Type.VOTE, quorum, party, propose, null)
@@ -45,10 +54,6 @@ class Reply implements ISection {
   
   static def Reply ack(Integer quorum, PublicKey party, Propose propose, byte[] replica) {
     return new Reply(Type.ACK, quorum, party, propose, replica)
-  }
-  
-  def String strParty() {
-    KeyPairHelper.encode(party)
   }
   
   override write(ByteBuf buf) {
