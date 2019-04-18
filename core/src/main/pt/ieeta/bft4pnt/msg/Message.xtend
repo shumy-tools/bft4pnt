@@ -107,7 +107,7 @@ class Message {
     synchronized(onReplicasChange) {
       for (rep : replicas) {
         val encodedKey = rep.strSource
-        if (encodedKey != encodedIgnore && q.contains(encodedKey) && rep.verify(sigSlice))
+        if (encodedKey != encodedIgnore && q.contains(encodedKey))
           counts.add(encodedKey)
       }
     }
