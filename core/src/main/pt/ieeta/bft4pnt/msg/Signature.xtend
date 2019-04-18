@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf
 import java.security.PublicKey
 import pt.ieeta.bft4pnt.crypto.ArraySlice
 import pt.ieeta.bft4pnt.crypto.DigestHelper
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 //@FinalFieldsConstructor
 class Signature implements ISection {
@@ -16,11 +16,11 @@ class Signature implements ISection {
   new (PublicKey source, byte[] signature) {
     this.source = source
     this.signature = signature
-    this.strSource = KeyPairHelper.encode(source)
+    this.strSource = CryptoHelper.encode(source)
   }
   
   def verify(ArraySlice slice) {
-    val verifier = java.security.Signature.getInstance("Ed25519", "BC") => [
+    val verifier = java.security.Signature.getInstance(CryptoHelper.SIG_ALG, CryptoHelper.PROVIDER) => [
       initVerify(source)
       update(slice.data, slice.offset, slice.length)
     ]
@@ -37,7 +37,7 @@ class Signature implements ISection {
     val key = Message.readBytes(buf)
     val signature = Message.readBytes(buf)
     
-    val source = KeyPairHelper.read(key)
+    val source = CryptoHelper.read(key)
     return new Signature(source, signature)
   }
   

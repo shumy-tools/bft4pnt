@@ -11,8 +11,8 @@ import java.util.HashSet
 import java.util.List
 import org.eclipse.xtend.lib.annotations.Accessors
 import pt.ieeta.bft4pnt.crypto.ArraySlice
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.spi.StoreManager
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 class Message {
   static val DEFAULT_BUF_CAP = 4096
@@ -55,7 +55,7 @@ class Message {
     this.body = body
   }
   
-  synchronized def getSource() { KeyPairHelper.encode(signature.source) }
+  synchronized def getSource() { CryptoHelper.encode(signature.source) }
   synchronized def getSignature() { signature.signature }
   
   synchronized def Data getData() { data }
@@ -100,7 +100,7 @@ class Message {
   // count distinct replicas that are part of the current quorum
   def int countReplicas(PublicKey ignore, StoreManager mng) {
     val q = mng.currentQuorum
-    val encodedIgnore = if (ignore !== null) KeyPairHelper.encode(ignore)
+    val encodedIgnore = if (ignore !== null) CryptoHelper.encode(ignore)
     
     // count distinct replicas
     val counts = new HashSet<String>

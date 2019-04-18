@@ -12,6 +12,7 @@ import org.bouncycastle.util.encoders.Base64
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.broker.MessageBroker
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Get
@@ -46,7 +47,7 @@ class PNTServer {
   new(KeyPair keys, String dbName, MessageBroker broker, (Message)=>boolean authorizer) {
     //this.party = KeyPairHelper.encode(keys.public)
     this.keys = keys
-    this.signer = java.security.Signature.getInstance("Ed25519", "BC") => [
+    this.signer = java.security.Signature.getInstance(CryptoHelper.SIG_ALG, CryptoHelper.PROVIDER) => [
       initSign(keys.private)
     ]
     

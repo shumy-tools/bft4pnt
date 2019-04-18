@@ -2,7 +2,7 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import java.security.PublicKey
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 class Reply implements ISection {
   //WARNING: don't change the position of defined types.
@@ -23,7 +23,7 @@ class Reply implements ISection {
     this.party = party
     this.propose = propose
     this.replica = replica
-    this.strParty = KeyPairHelper.encode(party)
+    this.strParty = CryptoHelper.encode(party)
   }
   
   static def Reply vote(Integer quorum, PublicKey party, Propose propose) {
@@ -81,6 +81,6 @@ class Reply implements ISection {
     
     val replica = Message.readBytes(buf)
     
-    return new Reply(type, quorum, KeyPairHelper.read(party), propose, replica)
+    return new Reply(type, quorum, CryptoHelper.read(party), propose, replica)
   }
 }

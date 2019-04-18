@@ -3,6 +3,9 @@ package bft4pnt.test
 import bft4pnt.test.utils.InitQuorum
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import java.io.BufferedOutputStream
+import java.io.FileOutputStream
+import java.io.PrintStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -17,9 +20,8 @@ import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Update
-import java.io.PrintStream
-import java.io.BufferedOutputStream
-import java.io.FileOutputStream
+
+import static java.lang.System.*
 
 class EvaluationTest {
   val udi = "udi-1"
@@ -30,13 +32,12 @@ class EvaluationTest {
   
   @Test
   def void testEval() {
-    /*val eval = System.getenv("EVAL")
+    val eval = System.getenv("EVAL")
     if (eval === null || !Boolean.parseBoolean(eval))
       return;
     
     System.setOut = outputFile("eval.txt")
     System.setErr = outputFile("error.txt")
-    */
     
     val nRuns = 3
     val bRuns = 4

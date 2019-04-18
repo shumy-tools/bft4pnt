@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 class MessageBroker {
   static val logger = LoggerFactory.getLogger(MessageBroker.simpleName)
@@ -22,7 +23,7 @@ class MessageBroker {
     this.db = new DataBroker(address)
     this.keys = keys
     
-    this.signer = Signature.getInstance("Ed25519", "BC") => [
+    this.signer = Signature.getInstance(CryptoHelper.SIG_ALG, CryptoHelper.PROVIDER) => [
       initSign(keys.private)
     ]
   }

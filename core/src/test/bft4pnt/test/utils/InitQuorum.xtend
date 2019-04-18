@@ -9,7 +9,6 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.PNTServer
 import pt.ieeta.bft4pnt.broker.MessageBroker
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
@@ -21,6 +20,7 @@ import pt.ieeta.bft4pnt.spi.StoreManager
 import org.eclipse.xtend.lib.annotations.Accessors
 import org.slf4j.LoggerFactory
 import io.netty.buffer.ByteBuf
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 @FinalFieldsConstructor
 class InitQuorumParty {
@@ -54,7 +54,7 @@ class InitQuorum {
     val dbName = '''DB-«port»-«party»'''
     PntDatabase.set(dbName, new InMemoryStoreMng, new InMemoryFileMng)
     
-    val keys = KeyPairHelper.genKeyPair
+    val keys = CryptoHelper.genKeyPair
     val inet = new InetSocketAddress("127.0.0.1", port + party)
       
     val broker = new MessageBroker(inet, keys)
@@ -77,7 +77,7 @@ class InitQuorum {
     val quorum = new Quorum(0, t, parties.map[party].clone)
     
     val inet = new InetSocketAddress("127.0.0.1", port)
-    val keys = KeyPairHelper.genKeyPair
+    val keys = CryptoHelper.genKeyPair
     val client = new MessageBroker(inet, keys)
     client.logInfoFilter = [false]
     

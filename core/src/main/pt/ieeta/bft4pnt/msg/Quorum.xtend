@@ -9,8 +9,8 @@ import java.util.HashMap
 import java.util.List
 import java.util.TreeMap
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
-import pt.ieeta.bft4pnt.crypto.KeyPairHelper
 import java.util.Map
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 class Quorum implements ISection {
   public val int index
@@ -25,7 +25,7 @@ class Quorum implements ISection {
     
     val parties = new TreeMap<String, QuorumParty>
     for (qP : qParties)
-      parties.put(KeyPairHelper.encode(qP.key), qP)
+      parties.put(CryptoHelper.encode(qP.key), qP)
     
     this.parties = Collections.unmodifiableMap(parties)
     
@@ -53,7 +53,7 @@ class Quorum implements ISection {
     val all = new HashMap<String, QuorumParty> => [
       putAll(this.parties)
       for (qP : qParties)
-        put(KeyPairHelper.encode(qP.key), qP)
+        put(CryptoHelper.encode(qP.key), qP)
     ]
     
     return new Quorum(index + 1, t, all.values.toList)
@@ -89,7 +89,7 @@ class QuorumParty implements ISection {
   public val InetSocketAddress address
   
   def String strKey() {
-    KeyPairHelper.encode(key)
+    CryptoHelper.encode(key)
   }
   
   override write(ByteBuf buf) {
@@ -99,7 +99,7 @@ class QuorumParty implements ISection {
   
   static def QuorumParty read(ByteBuf buf) {
     val bKey = Message.readBytes(buf)
-    val key = KeyPairHelper.read(bKey)
+    val key = CryptoHelper.read(bKey)
     
     val bAddress = Message.readString(buf)
     val hostPort = bAddress.split(":")
