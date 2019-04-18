@@ -429,7 +429,7 @@ class PNTServer {
   
   private def Signature copyReplicas(Quorum current, Message from, Message to) {
     for (rep : from.replicas) {
-      if (current.contains(rep.strSource) && rep.verify(to.sigSlice))
+      if (current.contains(rep.strSource))
         to.addReplica(rep)
     }
   } 
@@ -537,7 +537,7 @@ class Replicator {
       val iter = msg.replicas.iterator
       while (iter.hasNext && !isReplicated) {
         val rep = iter.next
-        if (party == rep.strSource && rep.verify(msg.sigSlice))
+        if (party == rep.strSource)
           isReplicated = true // already replicated
       }
       

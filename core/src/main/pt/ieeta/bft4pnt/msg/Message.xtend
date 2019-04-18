@@ -218,13 +218,14 @@ class Message {
       if (!signature.verify(sigSlice))
         return new ReadResult("Incorrect signature!")
       
-      //TODO: verify and remove incorrect signature replicas?
+      // Verify and remove incorrect signature replicas
+      val vReps = replicas.filter[verify(sigSlice)].toList
       
       val msg = new Message(version, record, body)
       msg.id = id
       msg.sigSlice = sigSlice
       msg.signature = signature
-      msg.replicas = replicas
+      msg.replicas = vReps
       msg.data = data
       
       return new ReadResult(msg)

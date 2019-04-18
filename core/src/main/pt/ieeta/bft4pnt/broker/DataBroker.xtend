@@ -51,7 +51,7 @@ class DataBroker {
     new Thread[
       Thread.currentThread.name = "MessageBroker-Thread"
       
-      val group = new NioEventLoopGroup(10)
+      val group = new NioEventLoopGroup(2)
       try {
         val b = new Bootstrap => [
           group(group)
