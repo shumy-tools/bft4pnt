@@ -2,11 +2,12 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import org.eclipse.xtend.lib.annotations.Accessors
 
 @FinalFieldsConstructor
-class Insert implements ISection {
+class Insert implements ISection, HasSlices {
   public val String type
-  public val Slices slices
+  @Accessors val Slices slices
   
   new(String type) {
     this.type = type

@@ -32,7 +32,6 @@ import pt.ieeta.bft4pnt.spi.StoreManager
 class PNTServer {
   static val logger = LoggerFactory.getLogger(PNTServer.simpleName)
   
-  //val String party
   val KeyPair keys
   val java.security.Signature signer
   
@@ -67,7 +66,8 @@ class PNTServer {
   }
   
   def void start() {
-    broker.start[ inetSource, msg |
+    broker.start
+    broker.addListener[ inetSource, msg |
       
       // clients do not send replies or errors, redirect to replicator
       if (msg.type === Message.Type.REPLY || msg.type === Message.Type.ERROR) {
@@ -404,20 +404,25 @@ class PNTServer {
   }
   
   dispatch private def void handle(Store cs, Message msg, Get body, (Message)=>void reply) {
+    val q = db.store.currentQuorum
+    
     // record must exist
     val record = cs.getRecord(msg.record.fingerprint)
     if (record === null) {
       logger.error("Non existent record (get, rec={})", msg.record.fingerprint)
-      reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
+      reply.apply(new Message(msg.record, Reply.noData(q.index, keys.public)))
       return;
     }
     
-    val commit = record.getCommit(body.index)
+    val index = if (body.index != -1) body.index else record.lastIndex
+    val commit = record.getCommit(index)
     if (commit === null) {
-      reply.apply(new Message(msg.record, Error.unauthorized("Non existent record!")))
+      logger.error("Non existent record (get, rec={}, idx={})", msg.record.fingerprint, body.index)
+      reply.apply(new Message(msg.record, Reply.noData(q.index, keys.public)))
       return;
     }
     
+    commit.id = msg.id
     reply.apply(commit)
   }
   

@@ -4,11 +4,13 @@ import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
 import java.security.KeyPair
 import java.security.Signature
+import java.util.ArrayList
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 import pt.ieeta.bft4pnt.msg.Error
 import pt.ieeta.bft4pnt.msg.Message
-import pt.ieeta.bft4pnt.crypto.CryptoHelper
 
 class MessageBroker {
   static val logger = LoggerFactory.getLogger(MessageBroker.simpleName)
@@ -18,6 +20,7 @@ class MessageBroker {
   val KeyPair keys
   
   val Signature signer
+  val listeners = Collections.synchronizedList(new ArrayList<(InetSocketAddress, Message)=>void>)
   
   new(InetSocketAddress address, KeyPair keys) {
     this.db = new DataBroker(address)
@@ -34,7 +37,11 @@ class MessageBroker {
     lFilter.set(filter)
   }
   
-  def void start((InetSocketAddress, Message)=>void handler) {
+  def addListener((InetSocketAddress, Message)=>void handler) {
+    listeners.add(handler)
+  }
+  
+  def void start() {
     db.start[inetSource, data |
       try {
         val result = Message.read(data)
@@ -46,7 +53,7 @@ class MessageBroker {
         }
         
         log(result.msg)[logger.info("MSG-RECV: {} from {}", result.msg, '''«inetSource.hostString»:«inetSource.port»''')]
-        handler.apply(inetSource, result.msg)
+        listeners.forEach[ apply(inetSource, result.msg) ]
       } catch(Throwable ex) {
         logger.error("MSG-ERROR: {}", ex.message)
         ex.printStackTrace

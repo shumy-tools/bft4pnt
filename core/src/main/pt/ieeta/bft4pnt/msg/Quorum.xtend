@@ -29,8 +29,8 @@ class Quorum implements ISection {
     
     this.parties = Collections.unmodifiableMap(parties)
     
-    if (n < 2*t + 1)
-      throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
+    //if (n < 2*t + 1)
+    //  throw new RuntimeException('''Invalid quorum configuration! (n,t)=(«n»,«t»)''')
   }
   
   def boolean contains(String party) {
@@ -39,6 +39,10 @@ class Quorum implements ISection {
   
   def List<String> getAllParties() {
     parties.keySet.toList
+  }
+  
+  def List<InetSocketAddress> getAllAddresses() {
+    parties.values.map[address].toList
   }
   
   def getPartyKey(String party) {

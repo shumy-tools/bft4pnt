@@ -5,14 +5,15 @@ import java.util.ArrayList
 import java.util.List
 import java.util.Map
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import org.eclipse.xtend.lib.annotations.Accessors
 
 @FinalFieldsConstructor
-class Update implements ISection {
+class Update implements ISection, HasSlices {
   public val Integer quorum
   public val Propose propose
   
   public val List<Signature> votes
-  public val Slices slices
+  @Accessors val Slices slices
   
   new(Integer quorum, Propose propose, List<Signature> votes) {
     this.quorum = quorum

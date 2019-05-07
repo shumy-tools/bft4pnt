@@ -1,14 +1,20 @@
 package bft4pnt.test.utils
 
+import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
 import java.security.Security
 import java.util.ArrayList
 import java.util.List
 import java.util.concurrent.atomic.AtomicInteger
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.eclipse.xtend.lib.annotations.Accessors
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
+import org.slf4j.LoggerFactory
+import pt.ieeta.bft4pnt.PNTClient
 import pt.ieeta.bft4pnt.PNTServer
+import pt.ieeta.bft4pnt.broker.ClientDataChannel
 import pt.ieeta.bft4pnt.broker.MessageBroker
+import pt.ieeta.bft4pnt.crypto.CryptoHelper
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 import pt.ieeta.bft4pnt.msg.Message
@@ -17,10 +23,7 @@ import pt.ieeta.bft4pnt.msg.QuorumParty
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
-import org.eclipse.xtend.lib.annotations.Accessors
-import org.slf4j.LoggerFactory
-import io.netty.buffer.ByteBuf
-import pt.ieeta.bft4pnt.crypto.CryptoHelper
+import pt.ieeta.bft4pnt.broker.ServerDataChannel
 
 @FinalFieldsConstructor
 class InitQuorumParty {
@@ -35,15 +38,17 @@ class InitQuorum {
   static val (Message)=>boolean authorizer = [ true ]
   
   val int port
-  val MessageBroker client
+  public val PNTClient client
+  
+  val MessageBroker cBroker
   val List<InitQuorumParty> parties
   
   @Accessors(PUBLIC_GETTER) var String quorumRec
   @Accessors(PUBLIC_GETTER) var Quorum quorum
   @Accessors(PUBLIC_GETTER) var String finger
   
-  new(int port, MessageBroker client, List<InitQuorumParty> parties, Quorum quorum) {
-    this(port, client, parties)
+  new(int port, PNTClient client, MessageBroker cBroker, List<InitQuorumParty> parties, Quorum quorum) {
+    this(port, client, cBroker, parties)
     
     this.quorum = quorum
     this.finger = new Data(quorum).fingerprint
@@ -78,10 +83,32 @@ class InitQuorum {
     
     val inet = new InetSocketAddress("127.0.0.1", port)
     val keys = CryptoHelper.genKeyPair
-    val client = new MessageBroker(inet, keys)
-    client.logInfoFilter = [false]
+    val cBroker = new MessageBroker(inet, keys)
+    cBroker.logInfoFilter = [false]
     
-    return new InitQuorum(port, client, parties, quorum)
+    val channel = new ClientDataChannel(keys, "/tmp/udi-1")
+    val client = new PNTClient("udi-1", quorum, cBroker, channel)
+    
+    return new InitQuorum(port, client, cBroker, parties, quorum)
+  }
+  
+  def createDataChannels(String store) {
+    val channels = new ArrayList<ServerDataChannel>(parties.size)
+    
+    var party = 1
+    for (iqp: parties) {
+      val dbName = '''DB-«port»-«party»'''
+      val sdc = new ServerDataChannel(store, iqp.party.address, PntDatabase.get(dbName))
+      sdc.start(authorizer)
+      
+      while (!sdc.ready)
+        Thread.sleep(100)
+      
+      channels.add(sdc)
+      party++
+    }
+    
+    return channels
   }
   
   def getPartyAtIndex(int party) {
@@ -101,21 +128,21 @@ class InitQuorum {
   
   def void send(int party, Message msg) {
     val qParty = parties.get(party - 1)
-    client.send(qParty.party.address, msg)
+    cBroker.send(qParty.party.address, msg)
   }
   
   def ByteBuf write(Message msg) {
-    client.write(msg)
+    cBroker.write(msg)
   }
   
   def void directSend(int party, ByteBuf data) {
     val qParty = parties.get(party - 1)
-    client.directSend(qParty.party.address, data)
+    cBroker.directSend(qParty.party.address, data)
   }
   
   def void start((Integer, Message)=>void handler, ()=>void startTest) {
     val counter = new AtomicInteger(0)
-    client.start[ inetSource, reply |
+    cBroker.addListener[ inetSource, reply |
       counter.incrementAndGet
       
       if (counter.get === quorum.n) {

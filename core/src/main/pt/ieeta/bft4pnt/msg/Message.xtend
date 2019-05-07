@@ -303,7 +303,7 @@ class Message {
       Update:   ''', q=«body.quorum», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round», votes=«body.votes.size», replicas=«replicas.size»'''
       Propose:  ''', index=«body.index», f=«body.fingerprint», round=«body.round»'''
       Reply:    ''', type=«body.type», party=«body.strParty»«IF body.propose !== null», index=«body.propose.index», f=«body.propose.fingerprint», round=«body.propose.round»«ENDIF»'''
-      Get:      ''', index=«body.index», slices=«body.slices»'''
+      Get:      ''', index=«body.index», slice=«body.slice»'''
       Error:    ''', code=«body.code», error=«body.msg»'''
     }
   }

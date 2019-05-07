@@ -31,7 +31,7 @@ class EvaluationTest {
   }
   
   @Test
-  def void testEval() {
+  def void testInserts() {
     val eval = System.getenv("EVAL")
     if (eval === null || !Boolean.parseBoolean(eval))
       return;
@@ -52,6 +52,19 @@ class EvaluationTest {
         evalInserts(port, parties, batch)
       }
     }
+  }
+  
+  @Test
+  def void testUpdates() {
+    val eval = System.getenv("EVAL")
+    if (eval === null || !Boolean.parseBoolean(eval))
+      return;
+    
+    System.setOut = outputFile("eval.txt")
+    System.setErr = outputFile("error.txt")
+    
+    val nRuns = 3
+    val bRuns = 4
     
     println('''Eval updates (one store / one record)''')
     for (n : 1 .. nRuns) {
@@ -63,7 +76,6 @@ class EvaluationTest {
         evalUpdates(port, parties, batch)
       }
     }
-    
   }
   
   def void evalInserts(int port, int n, int batch) {
@@ -77,7 +89,7 @@ class EvaluationTest {
     val replies = new AtomicInteger(0)
     val msgID = new AtomicLong(0L)
     
-    val time = System.currentTimeMillis
+    val time = new AtomicLong(0L)
     net.start([ party, reply |
       waiter.assertTrue(reply.body instanceof Reply)
       replies.incrementAndGet
@@ -97,6 +109,7 @@ class EvaluationTest {
         buf.release
       }
     ], [
+      time.set = System.currentTimeMillis
       val insert = Insert.create(msgID.incrementAndGet, udi, "eval", new Data(UUID.randomUUID.toString))
       for (sendTo : 1 .. n) {
         net.send(sendTo, insert)
@@ -105,7 +118,7 @@ class EvaluationTest {
     ])
     
     waiter.await(1_000_000)
-    val delta = (System.currentTimeMillis - time) / 1000.0
+    val delta = (System.currentTimeMillis - time.get) / 1000.0
     println('''    RUN-BATCH «batch» ON «delta»s''')
     net.stop
   }
@@ -127,7 +140,7 @@ class EvaluationTest {
     val round = new AtomicLong(0L)
     
     val voteReplies = new ConcurrentHashMap<String, Message>
-    val time = System.currentTimeMillis
+    val time = new AtomicLong(0L)
     net.start([ party, reply |
       waiter.assertTrue(reply.body instanceof Reply)
       if (updates.get > batch) {
@@ -137,7 +150,8 @@ class EvaluationTest {
       
       counter.incrementAndGet
       val rBody = reply.body as Reply
-      //println('''REPLY: «reply» -> «counter.get»''')
+      //if (counter.get % 1000 == 0)
+      //  println('''REPLY: «reply» -> «counter.get»''')
       
       // propose change
       if (rBody.type == Reply.Type.ACK && (counter.get + n) % (2*n) == 0) {
@@ -168,14 +182,15 @@ class EvaluationTest {
         }
       }
     ], [
+      time.set = System.currentTimeMillis
       for (sendTo : 1 .. n) {
         insert.id = msgID.incrementAndGet
         net.send(sendTo, insert)
       }
     ])
     
-    waiter.await(1_000_000)
-    val delta = (System.currentTimeMillis - time) / 1000.0
+    waiter.await(10_000_000)
+    val delta = (System.currentTimeMillis - time.get) / 1000.0
     println('''    RUN-BATCH «batch» ON «delta»s''')
     net.stop
   }
