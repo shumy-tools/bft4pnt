@@ -22,9 +22,9 @@ import pt.ieeta.bft4pnt.msg.Propose
 import pt.ieeta.bft4pnt.msg.Quorum
 import pt.ieeta.bft4pnt.msg.Reply
 import pt.ieeta.bft4pnt.msg.Signature
-import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.msg.Update
 import pt.ieeta.bft4pnt.spi.IExtension
+import pt.ieeta.bft4pnt.spi.IFileManager
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
@@ -151,24 +151,25 @@ class PNTServer {
       return;
     }
     
-    val has = msg.data.has(msg.record.fingerprint)
+    val has = msg.data.hasData(msg.record.fingerprint, 0)
     switch has {
-      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(q.index, keys.public)))
-      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(q.index, keys.public)))
-      case Data.Status.YES: {
+      case IFileManager.Status.NO: reply.apply(new Message(msg.record, Reply.noData(q.index, keys.public)))
+      case IFileManager.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(q.index, keys.public)))
+      case IFileManager.Status.YES: {
         // verify record fingerprint
-        if (msg.record.fingerprint != msg.data.fingerprint) {
+        // file fingerprint should be verified by the storage manager
+        if (msg.data.type !== Data.Type.FILE && msg.record.fingerprint != msg.data.fingerprint) {
           logger.error("Invalid record fingerprint (msg={}, data={})", msg.record.fingerprint, msg.data.fingerprint)
           reply.apply(new Message(msg.record, Error.invalid("Invalid record fingerprint!")))
           return;
         }
         
-        // verify slices
-        if (!body.slices.areSlicesOK(msg.data)) {
+        // slices should be verified by the storage manager
+        /*if (!body.slices.areSlicesOK(msg.data)) {
           logger.error("Invalid slice fingerprints!")
           reply.apply(new Message(msg.record, Error.invalid("Invalid slice fingerprints!")))
           return;
-        }
+        }*/
         
         // check extension constraints. LOCAL_STORE is a special store that is handled by the core protocol
         if (msg.record.udi != StoreManager.LOCAL_STORE) {
@@ -358,24 +359,25 @@ class PNTServer {
     }
     
     // parties only accept proposals if the data for the current fingerprint is safe in the local storage.
-    val has = msg.data.has(body.propose.fingerprint)
+    val has = msg.data.hasData(msg.record.fingerprint, body.propose.index)
     switch has {
-      case Data.Status.NO: reply.apply(new Message(msg.record, Reply.noData(body.quorum, keys.public, body.propose)))
-      case Data.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(body.quorum, keys.public, body.propose)))
-      case Data.Status.YES: {
+      case IFileManager.Status.NO: reply.apply(new Message(msg.record, Reply.noData(body.quorum, keys.public, body.propose)))
+      case IFileManager.Status.PENDING: reply.apply(new Message(msg.record, Reply.receiving(body.quorum, keys.public, body.propose)))
+      case IFileManager.Status.YES: {
         // verify update fingerprint
-        if (body.propose.fingerprint != msg.data.fingerprint) {
+        // file fingerprint should be verified by the storage manager
+        if (msg.data.type !== Data.Type.FILE && body.propose.fingerprint != msg.data.fingerprint) {
           logger.error("Invalid update fingerprint (msg={}, data={})", body.propose.fingerprint, msg.data.fingerprint)
           reply.apply(new Message(msg.record, Error.invalid("Invalid update fingerprint!")))
           return;
         }
         
-        // verify slices
-        if (!body.slices.areSlicesOK(msg.data)) {
+        // slices should be verified by the storage manager
+        /*if (!body.slices.areSlicesOK(msg.data)) {
           logger.error("Invalid slice fingerprints!")
           reply.apply(new Message(msg.record, Error.invalid("Invalid slice fingerprints!")))
           return;
-        }
+        }*/
         
         // check extension constraints. LOCAL_STORE is a special store that is handled by the core protocol
         if (msg.record.udi != StoreManager.LOCAL_STORE) {
@@ -426,7 +428,7 @@ class PNTServer {
     reply.apply(commit)
   }
   
-  private def boolean areSlicesOK(Slices slices, Data data) {
+  /*private def boolean areSlicesOK(Slices slices, Data data) {
     var index = 0
     for (slice : slices.slices) {
       if (data.sliceFingerprint(slices.size, index) != slice)
@@ -435,14 +437,24 @@ class PNTServer {
     }
     
     return true
-  }
+  }*/
   
   private def Signature copyReplicas(Quorum current, Message from, Message to) {
     for (rep : from.replicas) {
       if (current.contains(rep.strSource))
         to.addReplica(rep)
     }
-  } 
+  }
+  
+  private def IFileManager.Status hasData(Data data, String record, int index) {
+    if (data.type == Data.Type.FILE)
+      return db.files.exist(record, index)
+    
+    if (data.type == Data.Type.EMPTY)
+      return IFileManager.Status.NO
+    
+    return IFileManager.Status.YES
+  }
 }
 
 @FinalFieldsConstructor

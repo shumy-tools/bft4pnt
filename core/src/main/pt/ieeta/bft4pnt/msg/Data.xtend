@@ -2,13 +2,13 @@ package pt.ieeta.bft4pnt.msg
 
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
+import java.io.File
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import pt.ieeta.bft4pnt.crypto.DigestHelper
 
 @FinalFieldsConstructor
 class Data implements ISection {
   enum Type { EMPTY, RAW, INTEGER, STRING, SECTION, FILE }
-  enum Status { YES, NO, PENDING }
   
   public val Type type
   
@@ -18,22 +18,12 @@ class Data implements ISection {
   var String fingerprint = null
   
   new() { this(Type.EMPTY, null, null) }
+  
   new(byte[] value) { this(Type.RAW, value, null) }
   new(Integer value) { this(Type.INTEGER, value, null) }
   new(String value) { this(Type.STRING, value, null) }
   new(ISection value) { this(Type.SECTION, value, value.class.name) }
-  
-  def has(String key) {
-    if (type === Type.EMPTY)
-      return Status.NO
-    
-    if (type === Type.FILE) {
-      //TODO: get status from the file manager
-      return Status.NO
-    }
-    
-    return Status.YES
-  }
+  new(File value) { this(Type.FILE, value, value.name) }
   
   def byte[] getRaw() {
     if (type !== Type.RAW)
@@ -80,12 +70,18 @@ class Data implements ISection {
       }
       case STRING: DigestHelper.digest(obj as String)
       case SECTION: DigestHelper.digest(obj as ISection)
-      case FILE: {} //TODO: get fingerprint from the file manager
+      case FILE: DigestHelper.digest(obj as File)
     }
   }
   
-  def sliceFingerprint(int size, int index) {
-    //TODO: get slice fingerprint
+  def sliceFingerprint(int nSlices) {
+    if (type == Type.FILE) {
+      val file = obj as File
+      return DigestHelper.digestSlices(file, nSlices)
+    }
+    
+    // No slices if not a file!
+    return new Slices
   }
   
   override write(ByteBuf buf) {
@@ -100,7 +96,15 @@ class Data implements ISection {
         Message.writeString(buf, secType)
         (obj as ISection).write(buf)
       }
-      case FILE: {} //do nothing, data is in the file manager
+      case FILE: {
+        if (obj instanceof File) {
+          val file = obj as File
+          Message.writeString(buf, file.name)
+        } else {
+          val name = obj as String
+          Message.writeString(buf, name)
+        }
+      }
     }
   }
   
@@ -134,7 +138,10 @@ class Data implements ISection {
         new Data(obj)
       }
       
-      case FILE: {} //do nothing, data is in the file manager
+      case FILE: {
+        val fileName = Message.readString(buf)
+        new Data(Type.FILE, fileName, null)
+      }
     }
   }
 }

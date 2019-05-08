@@ -35,4 +35,15 @@ class Insert implements ISection, HasSlices {
       data = block
     ]
   }
+  
+  static def Message create(long msgId, String udi, String type, Data block, int nSlices) {
+    val slices = block.sliceFingerprint(nSlices)
+    val record = new Record(udi, block.fingerprint)
+    val body = new Insert(type, slices)
+  
+    return new Message(record, body) => [
+      id = msgId
+      data = block
+    ]
+  }
 }

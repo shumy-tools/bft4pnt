@@ -57,7 +57,8 @@ class InitQuorum {
   
   static def InitQuorumParty newParty(int port, int party) {
     val dbName = '''DB-«port»-«party»'''
-    PntDatabase.set(dbName, new InMemoryStoreMng, new InMemoryFileMng)
+    val home = System.getProperty("user.home")
+    PntDatabase.set(dbName, new InMemoryStoreMng, new DemoFileMng(home + "/test-data"))
     
     val keys = CryptoHelper.genKeyPair
     val inet = new InetSocketAddress("127.0.0.1", port + party)
@@ -86,19 +87,20 @@ class InitQuorum {
     val cBroker = new MessageBroker(inet, keys)
     cBroker.logInfoFilter = [false]
     
-    val channel = new ClientDataChannel(keys, "/tmp/udi-1")
+    val home = System.getProperty("user.home")
+    val channel = new ClientDataChannel(keys, home + "/test-data/udi-1")
     val client = new PNTClient("udi-1", quorum, cBroker, channel)
     
     return new InitQuorum(port, client, cBroker, parties, quorum)
   }
   
-  def createDataChannels(String store) {
+  def createDataChannels() {
     val channels = new ArrayList<ServerDataChannel>(parties.size)
     
     var party = 1
     for (iqp: parties) {
       val dbName = '''DB-«port»-«party»'''
-      val sdc = new ServerDataChannel(store, iqp.party.address, PntDatabase.get(dbName))
+      val sdc = new ServerDataChannel(iqp.party.address, PntDatabase.get(dbName))
       sdc.start(authorizer)
       
       while (!sdc.ready)

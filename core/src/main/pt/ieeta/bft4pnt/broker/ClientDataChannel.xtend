@@ -5,6 +5,7 @@ import io.netty.buffer.ByteBuf
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
+import io.netty.channel.ChannelOption
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
@@ -50,11 +51,15 @@ class RetrieveHandler extends SimpleChannelInboundHandler<ByteBuf> {
       os = new FileOutputStream(file)
     }
     
-    if (data.readableBytes > 0)
+    val size = data.readableBytes
+    if (size > 0)
       data.writeFile
     
+    //println('''DONE(«size») «done» of «getRet.size»''')
     if (done === getRet.size) {
       os.flush
+      os.close
+      
       client.onSliceReady.apply(getRet.record, getRet.index, getRet.slice)
       ctx.channel.disconnect
     }
@@ -80,7 +85,8 @@ class ClientChannelInitializer extends ChannelInitializer<SocketChannel> {
 }
 
 class ClientDataChannel {
-  static val logger = LoggerFactory.getLogger(ServerDataChannel.simpleName)
+  public static val BUF_SIZE = 8 * 1024 * 1024
+  static val logger = LoggerFactory.getLogger(ClientDataChannel.simpleName)
   
   val KeyPair keys
   package val String lStore
@@ -104,12 +110,16 @@ class ClientDataChannel {
   def void start((String, Integer, String)=>void onSliceReady) {
     this.onSliceReady = onSliceReady
     
-    group = new NioEventLoopGroup
+    group = new NioEventLoopGroup(8)
     try{
       boot = new Bootstrap => [
         group(group)
         channel(NioSocketChannel)
         handler(new ClientChannelInitializer(this))
+        
+        option(ChannelOption.TCP_NODELAY, true)
+        option(ChannelOption.SO_RCVBUF, BUF_SIZE)
+        option(ChannelOption.SO_SNDBUF, BUF_SIZE)
       ]
     } catch(Throwable ex) {
       ex.printStackTrace

@@ -51,7 +51,7 @@ class PNTClient {
       
       val ret = retrieves.get(msg.record.fingerprint)
       if (ret === null) {
-        logger.error("No corresponding retrieve request available!")
+        logger.warn("No corresponding retrieve request available!")
         return;
       }
       
@@ -158,12 +158,11 @@ class PNTClient {
   
   private def retrieve(Retrieve ret, List<String> replicas, Slices slices, String record, int index) {
     ret.slices.set = slices
-    
-    Executors.newCachedThreadPool.submit[
-      val mid = msgId.incrementAndGet
+    val mid = msgId.incrementAndGet
       
-      // get whole data block from a random party
-      if (slices.slices.size == 0) {
+    // get whole data block from a random party
+    if (slices.slices.size == 0) {
+      Executors.newCachedThreadPool.submit[
         val i = (new Random).nextInt(replicas.size)
         val party = replicas.get(i)
         val adr = quorum.getPartyAddress(party)
@@ -172,11 +171,13 @@ class PNTClient {
         logger.info("RETRIEVE-ALL: (record={}, index={}, party={})", record, index, party)
         val msg = Get.create(mid, udi, record, index, -1)
         channel.request(adr, msg)
-        return;
-      }
+      ]
+      return;
+    }
       
-      // distribute slice requests
-      for (i : 0 ..< slices.slices.size) {
+    // distribute slice requests
+    for (i : 0 ..< slices.slices.size) {
+      Executors.newCachedThreadPool.submit[
         val party = replicas.get(i % replicas.size)
         val adr = quorum.getPartyAddress(party)
         
@@ -184,8 +185,8 @@ class PNTClient {
         logger.info("RETRIEVE-SLICE: (record={}, index={}, party={}, slice={})", record, index, party, i)
         val msg = Get.create(mid, udi, record, index, i)
         channel.request(adr, msg)
-      }
-    ]
+      ]
+    }
   }
   
   private def getMsgIndex(Message msg) {

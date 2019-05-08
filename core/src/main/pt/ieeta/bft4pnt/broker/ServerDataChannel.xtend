@@ -6,23 +6,23 @@ import io.netty.buffer.PooledByteBufAllocator
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
+import io.netty.channel.ChannelOption
 import io.netty.channel.DefaultFileRegion
 import io.netty.channel.EventLoopGroup
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
-import java.io.RandomAccessFile
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicReference
 import org.eclipse.xtend.lib.annotations.FinalFieldsConstructor
 import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Get
+import pt.ieeta.bft4pnt.msg.GetRetrieve
 import pt.ieeta.bft4pnt.msg.HasSlices
 import pt.ieeta.bft4pnt.msg.Message
 import pt.ieeta.bft4pnt.msg.Slices
 import pt.ieeta.bft4pnt.spi.PntDatabase
-import pt.ieeta.bft4pnt.msg.GetRetrieve
 
 @FinalFieldsConstructor
 class StorageHandler extends SimpleChannelInboundHandler<ByteBuf> {
@@ -75,13 +75,15 @@ class StorageHandler extends SimpleChannelInboundHandler<ByteBuf> {
   }
   
   private def void retrieveAll(ChannelHandlerContext ctx, String record, int index) {
-    val raf = record.getFile(index)
+    val raf = srv.db.files.getFile(record, index)
+    if (raf === null)
+      return;
+      
     val getRet = new GetRetrieve(raf.length, record, index, null)
     
     var buf = PooledByteBufAllocator.DEFAULT.buffer(ServerDataChannel.BUFFER_SIZE)
     getRet.write(buf)
     
-    println("---TA---")
     ctx.write(buf)
     
     if (raf.length === 0) {
@@ -89,30 +91,35 @@ class StorageHandler extends SimpleChannelInboundHandler<ByteBuf> {
       return
     }
     
-    ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel(), 0, raf.length))
+    ctx.writeAndFlush(new DefaultFileRegion(raf.channel, 0, raf.length))
   }
   
   private def void retrieveSlice(ChannelHandlerContext ctx, Slices slices, String record, int index, int slice) {
-    val raf = record.getFile(index)
-    val getRet = new GetRetrieve(raf.length, record, index, slices.slices.get(slice))
+    val raf = srv.db.files.getFile(record, index)
+    if (raf === null)
+      return;
+    
+    // last slice may be of different size
+    val sSize = if (slice !== slices.slices.length - 1) {
+      slices.size
+    } else {
+      val rem = raf.length % slices.size
+      if (rem === 0) slices.size else rem
+    }
+    
+    val getRet = new GetRetrieve(sSize, record, index, slices.slices.get(slice))
     
     var buf = PooledByteBufAllocator.DEFAULT.buffer(ServerDataChannel.BUFFER_SIZE)
     getRet.write(buf)
     
-    println("---TS---")
     ctx.write(buf)
     
-    if (raf.length === 0) {
+    if (sSize === 0) {
       raf.close
       return
     }
     
-    //TODO: send slice
-  }
-  
-  private def getFile(String record, int index) {
-    val path = srv.lStore + "/1.2.392.200046.100.3.8.101171.7511.20170124143543.1.1.1.1.dcm"
-    new RandomAccessFile(path, "r")
+    ctx.writeAndFlush(new DefaultFileRegion(raf.channel, slice * slices.size, sSize))
   }
 }
 
@@ -130,7 +137,6 @@ class ServerDataChannel {
   package static val BUFFER_SIZE = 4096
   package static val logger = LoggerFactory.getLogger(ServerDataChannel.simpleName)
   
-  package val String lStore
   package val InetSocketAddress address
   package val PntDatabase db
   
@@ -147,12 +153,16 @@ class ServerDataChannel {
       Thread.currentThread.name = "DataChannel-Thread"
       
       val bossGroup = new NioEventLoopGroup(1) as EventLoopGroup
-      val workerGroup = new NioEventLoopGroup() as EventLoopGroup
+      val workerGroup = new NioEventLoopGroup(8) as EventLoopGroup
       try {
         val b = new ServerBootstrap => [
           group(bossGroup, workerGroup)
           channel(NioServerSocketChannel)
           childHandler(new ServerChannelInitializer(this))
+          
+          option(ChannelOption.TCP_NODELAY, true)
+          option(ChannelOption.SO_RCVBUF, ClientDataChannel.BUF_SIZE)
+          option(ChannelOption.SO_SNDBUF, ClientDataChannel.BUF_SIZE)
         ]
         
         channel.set = b.bind(address).sync.channel
