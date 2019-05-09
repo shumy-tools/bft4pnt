@@ -117,6 +117,7 @@ class ClientDataChannel {
         channel(NioSocketChannel)
         handler(new ClientChannelInitializer(this))
         
+        option(ChannelOption.SO_KEEPALIVE, true)
         option(ChannelOption.TCP_NODELAY, true)
         option(ChannelOption.SO_RCVBUF, BUF_SIZE)
         option(ChannelOption.SO_SNDBUF, BUF_SIZE)

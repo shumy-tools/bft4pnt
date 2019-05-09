@@ -7,7 +7,6 @@ import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInitializer
 import io.netty.channel.ChannelOption
-import io.netty.channel.DefaultFileRegion
 import io.netty.channel.EventLoopGroup
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.nio.NioEventLoopGroup
@@ -91,7 +90,7 @@ class StorageHandler extends SimpleChannelInboundHandler<ByteBuf> {
       return
     }
     
-    ctx.writeAndFlush(new DefaultFileRegion(raf.channel, 0, raf.length))
+    ctx.writeAndFlush(new ThrottlingFileRegion(raf.channel, 0, raf.length))
   }
   
   private def void retrieveSlice(ChannelHandlerContext ctx, Slices slices, String record, int index, int slice) {
@@ -119,7 +118,7 @@ class StorageHandler extends SimpleChannelInboundHandler<ByteBuf> {
       return
     }
     
-    ctx.writeAndFlush(new DefaultFileRegion(raf.channel, slice * slices.size, sSize))
+    ctx.writeAndFlush(new ThrottlingFileRegion(raf.channel, slice * slices.size, sSize))
   }
 }
 
@@ -160,6 +159,7 @@ class ServerDataChannel {
           channel(NioServerSocketChannel)
           childHandler(new ServerChannelInitializer(this))
           
+          option(ChannelOption.SO_KEEPALIVE, true)
           option(ChannelOption.TCP_NODELAY, true)
           option(ChannelOption.SO_RCVBUF, ClientDataChannel.BUF_SIZE)
           option(ChannelOption.SO_SNDBUF, ClientDataChannel.BUF_SIZE)

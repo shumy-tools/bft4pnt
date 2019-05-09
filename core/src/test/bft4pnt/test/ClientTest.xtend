@@ -3,7 +3,10 @@ package bft4pnt.test
 import bft4pnt.test.utils.InitQuorum
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintStream
 import java.io.PrintWriter
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -18,7 +21,12 @@ import org.slf4j.LoggerFactory
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
 
+import static java.lang.System.*
+
 class ClientTest {
+  def outputFile(String name) {
+    new PrintStream(new BufferedOutputStream(new FileOutputStream(name)), true)
+  }
   
   // stores will be set at ~/test-data
   private def File genFile(int size) {
@@ -48,12 +56,18 @@ class ClientTest {
     val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
     root.level = Level.ERROR
     
+    val eval = System.getenv("EVAL")
+    if (eval === null || !Boolean.parseBoolean(eval))
+      return;
+    
+    System.setOut = outputFile("eval.txt")
+    System.setErr = outputFile("error.txt")
+    
     val home = System.getProperty("user.home")
     new File(home + "/test-data").mkdirs
     
-    //runTest(8, 2)
-    
-    for (i: 0 .. 3) {
+    //runTest(4, 0)
+    for (i: 0 .. 4) {
       runTest(4, i)
     }
   }
