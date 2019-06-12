@@ -14,6 +14,7 @@ import pt.ieeta.bft4pnt.PNTClient
 import pt.ieeta.bft4pnt.PNTServer
 import pt.ieeta.bft4pnt.broker.ClientDataChannel
 import pt.ieeta.bft4pnt.broker.MessageBroker
+import pt.ieeta.bft4pnt.broker.ServerDataChannel
 import pt.ieeta.bft4pnt.crypto.CryptoHelper
 import pt.ieeta.bft4pnt.msg.Data
 import pt.ieeta.bft4pnt.msg.Insert
@@ -23,7 +24,6 @@ import pt.ieeta.bft4pnt.msg.QuorumParty
 import pt.ieeta.bft4pnt.spi.PntDatabase
 import pt.ieeta.bft4pnt.spi.Store
 import pt.ieeta.bft4pnt.spi.StoreManager
-import pt.ieeta.bft4pnt.broker.ServerDataChannel
 
 @FinalFieldsConstructor
 class InitQuorumParty {

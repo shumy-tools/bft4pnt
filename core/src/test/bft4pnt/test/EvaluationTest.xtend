@@ -31,57 +31,33 @@ class EvaluationTest {
   }
   
   @Test
-  def void testInserts() {
-    val eval = System.getenv("EVAL")
-    if (eval === null || !Boolean.parseBoolean(eval))
-      return;
-    
-    System.setOut = outputFile("eval.txt")
-    System.setErr = outputFile("error.txt")
-    
-    val nRuns = 3
-    val bRuns = 4
-    
-    println('''Eval inserts (one store / multiple records)''')
-    for (n : 1 .. nRuns) {
-      val parties = Math.pow(4, n) as int
-      println('''  PARTIES=«parties»''')
-      for (b : 0 .. bRuns){
-        val batch = Math.pow(2, 10 + b) as int
-        val port = 5000 + 1000*n + 100*b
-        evalInserts(port, parties, batch)
-      }
-    }
-  }
-  
-  @Test
-  def void testUpdates() {
-    val eval = System.getenv("EVAL")
-    if (eval === null || !Boolean.parseBoolean(eval))
-      return;
-    
-    System.setOut = outputFile("eval.txt")
-    System.setErr = outputFile("error.txt")
-    
-    val nRuns = 3
-    val bRuns = 4
-    
-    println('''Eval updates (one store / one record)''')
-    for (n : 1 .. nRuns) {
-      val parties = Math.pow(4, n) as int
-      println('''  PARTIES=«parties»''')
-      for (b : 0 .. bRuns){
-        val batch = Math.pow(2, 10 + b) as int
-        val port = 10000 + 1000*n + 100*b
-        evalUpdates(port, parties, batch)
-      }
+  def void testTransactions() {
+    try {
+      System.setOut = outputFile("eval.txt")
+      System.setErr = outputFile("error.txt")
+      
+      val eval = System.getenv("EVAL")
+      if (eval === null || !Boolean.parseBoolean(eval))
+        return;
+      
+      val $1 = System.getenv("PARTIES")
+      val parties = Integer.parseInt($1)
+      
+      val $2 = System.getenv("BATCH")
+      val batch = Integer.parseInt($2)
+      
+      val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
+      root.level = Level.ERROR
+      
+      println('''Eval transactions -> (parties=«parties», batch=«batch»)''')
+      evalInserts(5000, parties, batch)
+      evalUpdates(6000, parties, batch)
+    } catch (Throwable ex) {
+      ex.printStackTrace
     }
   }
   
   def void evalInserts(int port, int n, int batch) {
-    val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-    root.level = Level.ERROR
-
     val waiter = new Waiter
     val net = InitQuorum.init(port, n, 1)
     
@@ -119,14 +95,11 @@ class EvaluationTest {
     
     waiter.await(1_000_000)
     val delta = (System.currentTimeMillis - time.get) / 1000.0
-    println('''    RUN-BATCH «batch» ON «delta»s''')
+    println('''  INSERTS IN «delta»s''')
     net.stop
   }
   
   def void evalUpdates(int port,int n, int batch) {
-    val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-    root.level = Level.ERROR
-
     val waiter = new Waiter
     val net = InitQuorum.init(port, n, 1)
     
@@ -191,7 +164,7 @@ class EvaluationTest {
     
     waiter.await(10_000_000)
     val delta = (System.currentTimeMillis - time.get) / 1000.0
-    println('''    RUN-BATCH «batch» ON «delta»s''')
+    println('''  UPDATEs IN «delta»s''')
     net.stop
   }
 }

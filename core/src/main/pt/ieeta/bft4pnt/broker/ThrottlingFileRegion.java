@@ -129,7 +129,7 @@ public class ThrottlingFileRegion extends AbstractReferenceCounted implements Fi
           
           // Throttling
           long speed = getSpeed();
-          while (speed > 50000) {
+          while (speed > 10000) {
             /*try { Thread.sleep(100); } catch (Exception e) {
               e.printStackTrace();
             }*/

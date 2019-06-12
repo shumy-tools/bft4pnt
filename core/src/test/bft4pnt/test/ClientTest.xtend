@@ -47,28 +47,44 @@ class ClientTest {
     
     original.renameTo(file)
     
-    println('''FILE ( «size»MB ) : «file»''')
+    //println('''FILE ( «size»MB ) : «file»''')
     return file
   } 
   
   @Test
   def void testClientRetrieveTimes() {
-    val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-    root.level = Level.ERROR
-    
-    val eval = System.getenv("EVAL")
-    if (eval === null || !Boolean.parseBoolean(eval))
-      return;
-    
-    System.setOut = outputFile("eval.txt")
-    System.setErr = outputFile("error.txt")
-    
-    val home = System.getProperty("user.home")
-    new File(home + "/test-data").mkdirs
-    
-    //runTest(4, 0)
-    for (i: 0 .. 4) {
-      runTest(4, i)
+    try {
+      System.setOut = outputFile("eval.txt")
+      System.setErr = outputFile("error.txt")
+      
+      val eval = System.getenv("EVAL")
+      if (eval === null || !Boolean.parseBoolean(eval))
+        return;
+      
+      val $1 = System.getenv("PARTIES")
+      val parties = Integer.parseInt($1)
+      
+      val $2 = System.getenv("SIZE")
+      val size = Integer.parseInt($2)
+      
+      val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
+      root.level = Level.ERROR
+      
+      val home = System.getProperty("user.home")
+      new File(home + "/test-data").mkdirs
+      
+      println('''Eval retrieves -> (parties=«parties», size=«size»MB)''')
+      
+      val file = genFile(size)
+      testClientRetrieve(parties, 5000, file)
+      testClientSliceRetrieve(parties, 6000, file)
+      
+      Files.walk(Paths.get(home + "/test-data"))
+              .filter[Files.isRegularFile(it)]
+              .forEach[ Files.delete(it) ]
+              
+    } catch (Throwable ex) {
+      ex.printStackTrace
     }
   }
   
@@ -115,7 +131,7 @@ class ClientTest {
     waiter.await(400000)
     waiter.assertTrue(ok.get)
     val delta = (System.currentTimeMillis - time.get) / 1000.0
-    println('''  SIMPLE-RETRIEVE IN «delta»s''')
+    println('''  SIMPLE IN «delta»s''')
     net.stop
   }
   
@@ -128,7 +144,7 @@ class ClientTest {
     val net  = InitQuorum.init(port, parties, 1)
     net.createDataChannels
     
-    val insert = Insert.create(1L, udi, "test", new Data(file), 4)
+    val insert = Insert.create(1L, udi, "test", new Data(file), parties)
     
     val time = new AtomicLong(0L)
     net.start([ party, reply |
@@ -148,7 +164,7 @@ class ClientTest {
     waiter.await(400000)
     waiter.assertTrue(ok.get)
     val delta = (System.currentTimeMillis - time.get) / 1000.0
-    println('''  SLICE-RETRIEVE IN «delta»s''')
+    println('''  SLICED IN «delta»s''')
     net.stop
   }
   
